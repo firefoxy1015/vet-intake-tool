@@ -31,6 +31,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btext{font-size:12px;color:#555;line-height:1.7;font-family:monospace;white-space:pre-wrap;word-break:break-word}
 .cbtn{margin-top:8px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#444;width:100%}
 .cbtn:active{opacity:.7}
+.qswrap{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px;margin-top:12px}
+.qstext{font-size:12.5px;color:#1e3a5f;line-height:1.75;font-style:italic}
+.qscbtn{margin-top:8px;background:#fff;border:1px solid #BFDBFE;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#2563EB;width:100%}
+.qscbtn:active{opacity:.7}
 </style>
 </head>
 <body>
@@ -49,57 +53,57 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 var lang='zh';
 var cur=null;
 var T={
-zh:{title:'VA 快速问诊工具',basicLabel:'基础问诊（每例必问）',specLabel:'专项问题',briefLabel:'汇报模板',copy:'复制模板',copied:'已复制 ✓'},
-en:{title:'VA Quick Intake Tool',basicLabel:'Basic history (ask every case)',specLabel:'Chief complaint questions',briefLabel:'Briefing template',copy:'Copy template',copied:'Copied ✓'}
+zh:{title:'VA 快速问诊工具',basicLabel:'基础问诊（每例必问）',specLabel:'专项问题',briefLabel:'汇报模板',copy:'复制模板',copied:'已复制 ✓',qsLabel:'Quick Summary 示例',qscopy:'复制示例',qscopied:'已复制 ✓'},
+en:{title:'VA Quick Intake Tool',basicLabel:'Basic history (ask every case)',specLabel:'Chief complaint questions',briefLabel:'Briefing template',copy:'Copy template',copied:'Copied ✓',qsLabel:'Quick Summary Example',qscopy:'Copy summary',qscopied:'Copied ✓'}
 };
 var D={
 vd:{
-zh:{t:'呕吐 / 腹泻',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','大小便情况','精神状态'],s:['呕吐次数','呕吐物性状（食物/胆汁/泡沫/血）','是否有血','日常饮食 & 近期换粮？','是否驱虫','其他宠物是否同样','环境变化？'],br:'姓名___ 年龄___ 性别___\n始于 ___\n呕 ___ 次，性状：[食/胆/泡/血]\n腹泻 ___ 次/天，血便？[Y/N]\n饮水：[正常/减少] 食欲：[正常/减退]\n精神：[正常/减退] 驱虫：[已/未]'},
-en:{t:'Vomiting / Diarrhea',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Urination & defecation','Energy level'],s:['# of vomiting episodes','Vomit content (food/bile/foam/blood)','Blood?','Usual diet & recent diet change?','Deworming current?','Other pets affected?','Environment change?'],br:'Name___ Age___ Sex___\nOnset: ___\nVomited ___ times. Content: [food/bile/foam/blood]\nDiarrhea ___ x/day. Blood? [Y/N]\nWater intake: [normal/decreased]\nAppetite: [normal/decreased]\nEnergy: [normal/decreased]\nDeworming: [current/overdue]'}
+zh:{t:'呕吐 / 腹泻',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','大小便情况','精神状态'],s:['呕吐次数','呕吐物性状（食物/胆汁/泡沫/血）','是否有血','日常饮食 & 近期换粮？','是否驱虫','其他宠物是否同样','环境变化？'],br:'姓名___ 年龄___ 性别___\n始于 ___\n呕 ___ 次，性状：[食/胆/泡/血]\n腹泻 ___ 次/天，血便？[Y/N]\n饮水：[正常/减少] 食欲：[正常/减退]\n精神：[正常/减退] 驱虫：[已/未]',qs:'主人说今天早上开始吐了3次，吐胆汁和泡沫。腹泻2次，无血便。食欲下降，仍饮水。精神略差。近期未换粮，未驱虫。'},
+en:{t:'Vomiting / Diarrhea',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Urination & defecation','Energy level'],s:['# of vomiting episodes','Vomit content (food/bile/foam/blood)','Blood?','Usual diet & recent diet change?','Deworming current?','Other pets affected?','Environment change?'],br:'Name___ Age___ Sex___\nOnset: ___\nVomited ___ times. Content: [food/bile/foam/blood]\nDiarrhea ___ x/day. Blood? [Y/N]\nWater intake: [normal/decreased]\nAppetite: [normal/decreased]\nEnergy: [normal/decreased]\nDeworming: [current/overdue]',qs:'Owner reports vomiting 3 times since this morning, content bile and foam. Diarrhea twice, no blood. Appetite decreased, still drinking. Energy slightly low. No recent diet change or deworming.'}
 },
 app:{
-zh:{t:'食欲不振',u:0,b:['主诉 & 开始时间','是否加重','大小便情况','精神状态'],s:['完全拒食 or 仅减少','是否仍饮水','是否呕吐/腹泻','体重减轻？','压力/环境变化？'],br:'姓名___ 年龄___ 性别___\n食欲下降，始于 ___\n完全拒食？[Y/N] 仍饮水？[Y/N]\n呕吐？[Y/N] 腹泻？[Y/N]\n精神：[正常/减退] 体重减轻？[Y/N]\n环境变化：___'},
-en:{t:'Not Eating',u:0,b:['Chief complaint & onset','Getting worse?','Urination & defecation','Energy level'],s:['Refusing all food or just reduced?','Still drinking water?','Vomiting? Diarrhea?','Weight loss?','Stress or environment change?'],br:'Name___ Age___ Sex___\nDecreased appetite since: ___\nRefusing all food? [Y/N] Still drinking? [Y/N]\nVomiting? [Y/N] Diarrhea? [Y/N]\nEnergy: [normal/decreased]\nWeight loss? [Y/N] Stress/env change: ___'}
+zh:{t:'食欲不振',u:0,b:['主诉 & 开始时间','是否加重','大小便情况','精神状态'],s:['完全拒食 or 仅减少','是否仍饮水','是否呕吐/腹泻','体重减轻？','压力/环境变化？'],br:'姓名___ 年龄___ 性别___\n食欲下降，始于 ___\n完全拒食？[Y/N] 仍饮水？[Y/N]\n呕吐？[Y/N] 腹泻？[Y/N]\n精神：[正常/减退] 体重减轻？[Y/N]\n环境变化：___',qs:'主人说食欲下降2天，未完全拒食。仍有饮水。无呕吐腹泻。精神略差，其他正常。无明显应激或环境变化。'},
+en:{t:'Not Eating',u:0,b:['Chief complaint & onset','Getting worse?','Urination & defecation','Energy level'],s:['Refusing all food or just reduced?','Still drinking water?','Vomiting? Diarrhea?','Weight loss?','Stress or environment change?'],br:'Name___ Age___ Sex___\nDecreased appetite since: ___\nRefusing all food? [Y/N] Still drinking? [Y/N]\nVomiting? [Y/N] Diarrhea? [Y/N]\nEnergy: [normal/decreased]\nWeight loss? [Y/N] Stress/env change: ___',qs:'Owner reports decreased appetite for 2 days, not fully refusing food. Still drinking water. No vomiting or diarrhea. Energy slightly low but otherwise acting normal. No stress or environment change noted.'}
 },
 uri:{
-zh:{t:'泌尿问题',u:1,un:'⚠ 注意尿路阻塞',b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['上次正常排尿时间','是否努责','每次尿量少？','是否血尿','是否嚎叫','频繁进出砂盆？','既往阻塞/UTI史'],br:'姓名___ 年龄___ 性别___\n始于 ___ 上次正常尿：___\n努责？[Y/N] 尿量少？[Y/N]\n血尿？[Y/N] 嚎叫？[Y/N]\n频繁入砂盆？[Y/N]\n既往阻塞/UTI？[Y/N]\n⚠ 疑似阻塞：[Y/N]'},
-en:{t:'Urinary Issue',u:1,un:'⚠ Possible obstruction',b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Last normal urination','Straining to urinate?','Small amounts only?','Blood in urine?','Vocalizing/crying?','Frequent litter box trips?','Previous blockage or UTI?'],br:'Name___ Age___ Sex___\nOnset: ___ Last normal urine: ___\nStraining? [Y/N] Small amounts? [Y/N]\nHematuria? [Y/N] Vocalizing? [Y/N]\nFrequent litter box? [Y/N]\nPrev blockage/UTI? [Y/N]\n⚠ Possible obstruction: [Y/N]'}
+zh:{t:'泌尿问题',u:1,un:'⚠ 注意尿路阻塞',b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['上次正常排尿时间','是否努责','每次尿量少？','是否血尿','是否嚎叫','频繁进出砂盆？','既往阻塞/UTI史'],br:'姓名___ 年龄___ 性别___\n始于 ___ 上次正常尿：___\n努责？[Y/N] 尿量少？[Y/N]\n血尿？[Y/N] 嚎叫？[Y/N]\n频繁入砂盆？[Y/N]\n既往阻塞/UTI？[Y/N]\n⚠ 疑似阻塞：[Y/N]',qs:'主人说昨天开始频繁努责排尿，每次尿量很少，疑似血尿。食欲下降，精神明显变差。既往有尿路阻塞史。'},
+en:{t:'Urinary Issue',u:1,un:'⚠ Possible obstruction',b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Last normal urination','Straining to urinate?','Small amounts only?','Blood in urine?','Vocalizing/crying?','Frequent litter box trips?','Previous blockage or UTI?'],br:'Name___ Age___ Sex___\nOnset: ___ Last normal urine: ___\nStraining? [Y/N] Small amounts? [Y/N]\nHematuria? [Y/N] Vocalizing? [Y/N]\nFrequent litter box? [Y/N]\nPrev blockage/UTI? [Y/N]\n⚠ Possible obstruction: [Y/N]',qs:'Owner reports frequent straining to urinate since yesterday. Small amount only, possible blood noted. Appetite decreased, energy lower than normal. Previous history of urinary blockage.'}
 },
 resp:{
-zh:{t:'呼吸异常',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['呼吸急促？','呼吸费力？','张口呼吸？','咳嗽？','牙龈颜色','发绀/苍白？'],br:'姓名___ 年龄___ 性别___\n始于 ___\n急促？[Y/N] 费力？[Y/N]\n张口？[Y/N] 咳嗽？[Y/N]\n牙龈：[粉红/苍白/发绀]\n⚠ 呼吸窘迫 → 立即通知医生'},
-en:{t:'Breathing Difficulty',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['Rapid breathing?','Labored breathing?','Open-mouth breathing?','Coughing?','Gum color','Cyanosis or pale gums?'],br:'Name___ Age___ Sex___\nOnset: ___\nRapid? [Y/N] Labored? [Y/N]\nOpen-mouth? [Y/N] Coughing? [Y/N]\nGums: [pink/pale/blue]\n⚠ RESPIRATORY DISTRESS → notify doctor immediately'}
+zh:{t:'呼吸异常',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['呼吸急促？','呼吸费力？','张口呼吸？','咳嗽？','牙龈颜色','发绀/苍白？'],br:'姓名___ 年龄___ 性别___\n始于 ___\n急促？[Y/N] 费力？[Y/N]\n张口？[Y/N] 咳嗽？[Y/N]\n牙龈：[粉红/苍白/发绀]\n⚠ 呼吸窘迫 → 立即通知医生',qs:'主人说今早开始呼吸急促，在家就开始张口呼吸。不吃不喝。牙龈看起来苍白。已立即通知医生。'},
+en:{t:'Breathing Difficulty',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['Rapid breathing?','Labored breathing?','Open-mouth breathing?','Coughing?','Gum color','Cyanosis or pale gums?'],br:'Name___ Age___ Sex___\nOnset: ___\nRapid? [Y/N] Labored? [Y/N]\nOpen-mouth? [Y/N] Coughing? [Y/N]\nGums: [pink/pale/blue]\n⚠ RESPIRATORY DISTRESS → notify doctor immediately',qs:'Owner reports rapid labored breathing since this morning. Open-mouth breathing noted at home. Not eating or drinking. Gums appeared pale. Doctor notified immediately.'}
 },
 cough:{
-zh:{t:'咳嗽 / 喷嚏',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['咳嗽/喷嚏/两者','持续时间','鼻腔分泌物？','眼部分泌物？','近期接触/寄养史','疫苗是否接种'],br:'姓名___ 年龄___ 性别___\n始于 ___ 持续 ___\n类型：[干咳/有痰/鹅叫]\n鼻涕？[Y/N] 眼分泌物？[Y/N]\n近期寄养/接触？[Y/N]\n疫苗：[已接种/未接种]'},
-en:{t:'Coughing / Sneezing',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Cough, sneeze, or both?','How long?','Nasal discharge?','Eye discharge?','Recent boarding or contact?','Vaccines current?'],br:'Name___ Age___ Sex___\nOnset: ___ Duration: ___\nType: [dry/productive/honking]\nNasal discharge? [Y/N] Eye discharge? [Y/N]\nRecent boarding/contact? [Y/N]\nVaccines: [current/overdue]'}
+zh:{t:'咳嗽 / 喷嚏',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['咳嗽/喷嚏/两者','持续时间','鼻腔分泌物？','眼部分泌物？','近期接触/寄养史','疫苗是否接种'],br:'姓名___ 年龄___ 性别___\n始于 ___ 持续 ___\n类型：[干咳/有痰/鹅叫]\n鼻涕？[Y/N] 眼分泌物？[Y/N]\n近期寄养/接触？[Y/N]\n疫苗：[已接种/未接种]',qs:'主人说咳嗽喷嚏3天，逐渐加重。有少量清鼻涕。食欲精神略差。疫苗已接种。近期无寄养或接触其他动物。'},
+en:{t:'Coughing / Sneezing',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Cough, sneeze, or both?','How long?','Nasal discharge?','Eye discharge?','Recent boarding or contact?','Vaccines current?'],br:'Name___ Age___ Sex___\nOnset: ___ Duration: ___\nType: [dry/productive/honking]\nNasal discharge? [Y/N] Eye discharge? [Y/N]\nRecent boarding/contact? [Y/N]\nVaccines: [current/overdue]',qs:'Owner reports coughing and sneezing for 3 days, progressively worse. Mild clear nasal discharge. Appetite and energy slightly decreased. Vaccines current. No recent boarding or contact with other animals.'}
 },
 pain:{
-zh:{t:'疼痛 / 跛行',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['哪条腿/哪个部位','突发 or 渐进','外伤史？','是否负重','肿胀？','疼痛评分(0-5)'],br:'姓名___ 年龄___ 性别___\n部位：___ 始于 ___\n[突发/渐进] 外伤？[Y/N]\n负重？[Y/N] 肿胀？[Y/N]\n疼痛评分：___/5'},
-en:{t:'Pain / Limping',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which leg or area?','Sudden or gradual onset?','Known trauma?','Weight-bearing?','Swelling?','Pain score (0–5)'],br:'Name___ Age___ Sex___\nLocation: ___ Onset: ___\n[Sudden / Gradual] Trauma? [Y/N]\nWeight-bearing? [Y/N] Swelling? [Y/N]\nPain score: ___/5'}
+zh:{t:'疼痛 / 跛行',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['哪条腿/哪个部位','突发 or 渐进','外伤史？','是否负重','肿胀？','疼痛评分(0-5)'],br:'姓名___ 年龄___ 性别___\n部位：___ 始于 ___\n[突发/渐进] 外伤？[Y/N]\n负重？[Y/N] 肿胀？[Y/N]\n疼痛评分：___/5',qs:'主人说昨天早上突然开始右后肢跛行。无外伤史。仍可部分负重。无明显肿胀。食欲精神略差。'},
+en:{t:'Pain / Limping',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which leg or area?','Sudden or gradual onset?','Known trauma?','Weight-bearing?','Swelling?','Pain score (0–5)'],br:'Name___ Age___ Sex___\nLocation: ___ Onset: ___\n[Sudden / Gradual] Trauma? [Y/N]\nWeight-bearing? [Y/N] Swelling? [Y/N]\nPain score: ___/5',qs:'Owner reports limping on right hind leg since yesterday morning, sudden onset. No known trauma. Still partially weight-bearing. No visible swelling. Appetite and energy slightly reduced.'}
 },
 eye:{
-zh:{t:'眼部问题',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['左/右/双眼','发红？','分泌物颜色（透明/黄/绿）','眯眼/闭眼？','用爪抓眼？','角膜混浊？','外伤史？'],br:'姓名___ 年龄___ 性别___\n患眼：[左/右/双] 始于 ___\n发红？[Y/N] 分泌物：[透明/黄/绿]\n眯眼？[Y/N] 爪抓？[Y/N]\n混浊？[Y/N] 外伤？[Y/N]'},
-en:{t:'Eye Problem',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which eye (L/R/both)?','Redness?','Discharge color (clear/yellow/green)?','Squinting or closed?','Pawing at eye?','Cloudy cornea?','Trauma?'],br:'Name___ Age___ Sex___\nEye: [L/R/Both] Onset: ___\nRedness? [Y/N] Discharge: [clear/yellow/green]\nSquinting? [Y/N] Pawing? [Y/N]\nCloudy? [Y/N] Trauma? [Y/N]'}
+zh:{t:'眼部问题',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['左/右/双眼','发红？','分泌物颜色（透明/黄/绿）','眯眼/闭眼？','用爪抓眼？','角膜混浊？','外伤史？'],br:'姓名___ 年龄___ 性别___\n患眼：[左/右/双] 始于 ___\n发红？[Y/N] 分泌物：[透明/黄/绿]\n眯眼？[Y/N] 爪抓？[Y/N]\n混浊？[Y/N] 外伤？[Y/N]',qs:'主人说左眼发红、黄色分泌物2天。患眼眯缝，频繁用爪抓眼。无外伤史。进食精神正常。'},
+en:{t:'Eye Problem',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which eye (L/R/both)?','Redness?','Discharge color (clear/yellow/green)?','Squinting or closed?','Pawing at eye?','Cloudy cornea?','Trauma?'],br:'Name___ Age___ Sex___\nEye: [L/R/Both] Onset: ___\nRedness? [Y/N] Discharge: [clear/yellow/green]\nSquinting? [Y/N] Pawing? [Y/N]\nCloudy? [Y/N] Trauma? [Y/N]',qs:'Owner reports redness and yellow discharge from left eye for 2 days. Pet is squinting and frequently pawing at the eye. No trauma history. Eating and energy normal.'}
 },
 ear:{
-zh:{t:'耳部问题',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['左/右/双耳','摇头？','挠耳？','异味？','分泌物颜色','疼痛反应？','既往耳部感染？'],br:'姓名___ 年龄___ 性别___\n患耳：[左/右/双] 始于 ___\n摇头？[Y/N] 挠耳？[Y/N]\n异味？[Y/N] 分泌物颜色：___\n疼痛？[Y/N] 既往感染？[Y/N]'},
-en:{t:'Ear Problem',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which ear (L/R/both)?','Head shaking?','Scratching at ear?','Odor?','Discharge color?','Pain response?','Previous ear infections?'],br:'Name___ Age___ Sex___\nEar: [L/R/Both] Onset: ___\nHead shaking? [Y/N] Scratching? [Y/N]\nOdor? [Y/N] Discharge color: ___\nPain? [Y/N] Prev infections? [Y/N]'}
+zh:{t:'耳部问题',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['左/右/双耳','摇头？','挠耳？','异味？','分泌物颜色','疼痛反应？','既往耳部感染？'],br:'姓名___ 年龄___ 性别___\n患耳：[左/右/双] 始于 ___\n摇头？[Y/N] 挠耳？[Y/N]\n异味？[Y/N] 分泌物颜色：___\n疼痛？[Y/N] 既往感染？[Y/N]',qs:'主人说右耳摇头挠耳3天。有深棕色分泌物，有异味。触碰耳道有疼痛反应。6个月前有耳部感染史。'},
+en:{t:'Ear Problem',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Which ear (L/R/both)?','Head shaking?','Scratching at ear?','Odor?','Discharge color?','Pain response?','Previous ear infections?'],br:'Name___ Age___ Sex___\nEar: [L/R/Both] Onset: ___\nHead shaking? [Y/N] Scratching? [Y/N]\nOdor? [Y/N] Discharge color: ___\nPain? [Y/N] Prev infections? [Y/N]',qs:'Owner reports head shaking and scratching at right ear for 3 days. Dark brown discharge with odor noted. Pain response when ear touched. History of ear infection 6 months ago.'}
 },
 skin:{
-zh:{t:'皮肤 / 肿块',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['位置','首次发现时间','瘙痒？','舔咬/抓挠？','是否扩散','破溃/渗液？','是否变大'],br:'姓名___ 年龄___ 性别___\n位置：___ 首发：___\n瘙痒？[Y/N] 舔咬？[Y/N]\n扩散？[Y/N] 破溃/渗液？[Y/N]\n变大？[Y/N]'},
-en:{t:'Skin / Lump',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Location on body','When first noticed?','Itchy?','Licking or scratching?','Spreading?','Open or oozing?','Getting bigger?'],br:'Name___ Age___ Sex___\nLocation: ___ First noticed: ___\nItchy? [Y/N] Licking/scratching? [Y/N]\nSpreading? [Y/N] Open/oozing? [Y/N]\nGrowing? [Y/N]'}
+zh:{t:'皮肤 / 肿块',u:0,b:['主诉 & 开始时间','是否加重','进食饮水情况','精神状态'],s:['位置','首次发现时间','瘙痒？','舔咬/抓挠？','是否扩散','破溃/渗液？','是否变大'],br:'姓名___ 年龄___ 性别___\n位置：___ 首发：___\n瘙痒？[Y/N] 舔咬？[Y/N]\n扩散？[Y/N] 破溃/渗液？[Y/N]\n变大？[Y/N]',qs:'主人说2周前首次发现右肩肿块，逐渐增大。无瘙痒舔咬。未破溃或渗液。进食精神正常。'},
+en:{t:'Skin / Lump',u:0,b:['Chief complaint & onset','Getting worse?','Eating & drinking','Energy level'],s:['Location on body','When first noticed?','Itchy?','Licking or scratching?','Spreading?','Open or oozing?','Getting bigger?'],br:'Name___ Age___ Sex___\nLocation: ___ First noticed: ___\nItchy? [Y/N] Licking/scratching? [Y/N]\nSpreading? [Y/N] Open/oozing? [Y/N]\nGrowing? [Y/N]',qs:'Owner first noticed a lump on the right shoulder 2 weeks ago, gradually getting bigger. No itching, licking, or scratching. Not open or oozing. Eating and energy normal.'}
 },
 neuro:{
-zh:{t:'神经症状',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['是否首次发作','持续时间','发作经过描述','是否恢复正常','意识丧失？','是否排便/排尿','可能毒物接触？'],br:'姓名___ 年龄___ 性别___\n发生时间：___\n首次？[Y/N] 持续：___\n表现：___\n恢复？[Y/N] 意识丧失？[Y/N]\n排便/尿？[Y/N] 毒物？___\n⚠ 立即通知医生'},
-en:{t:'Neurological / Seizure',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['First episode?','How long did it last?','What happened (describe)?','Did pet recover?','Loss of consciousness?','Urinated or defecated?','Possible toxin exposure?'],br:'Name___ Age___ Sex___\nTime of episode: ___\nFirst episode? [Y/N] Duration: ___\nDescription: ___\nRecovered? [Y/N] LOC? [Y/N]\nUrinated/defecated? [Y/N] Possible toxin: ___\n⚠ Notify doctor immediately'}
+zh:{t:'神经症状',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['是否首次发作','持续时间','发作经过描述','是否恢复正常','意识丧失？','是否排便/排尿','可能毒物接触？'],br:'姓名___ 年龄___ 性别___\n发生时间：___\n首次？[Y/N] 持续：___\n表现：___\n恢复？[Y/N] 意识丧失？[Y/N]\n排便/尿？[Y/N] 毒物？___\n⚠ 立即通知医生',qs:'主人说约1小时前首次发作，持续约2分钟。目前已恢复，有反应。发作时排尿。无已知毒物接触。已立即通知医生。'},
+en:{t:'Neurological / Seizure',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['First episode?','How long did it last?','What happened (describe)?','Did pet recover?','Loss of consciousness?','Urinated or defecated?','Possible toxin exposure?'],br:'Name___ Age___ Sex___\nTime of episode: ___\nFirst episode? [Y/N] Duration: ___\nDescription: ___\nRecovered? [Y/N] LOC? [Y/N]\nUrinated/defecated? [Y/N] Possible toxin: ___\n⚠ Notify doctor immediately',qs:'Owner reports first-ever seizure approximately 1 hour ago, lasted about 2 minutes. Pet has recovered and is now responsive. Urinated during episode. No known toxin exposure. Doctor notified immediately.'}
 },
 toxin:{
-zh:{t:'中毒 / 异物',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['摄入物质','摄入量','摄入时间','是否有包装/照片','是否呕吐','是否腹泻','目前是否仍能接触'],br:'姓名___ 年龄___ 性别___\n摄入物：___ 量：___\n时间：___\n有包装/照片？[Y/N]\n呕吐？[Y/N] 腹泻？[Y/N]\n仍可接触？[Y/N]\n⚠ 立即通知医生'},
-en:{t:'Toxin / Foreign Body',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['What was ingested?','How much?','When?','Packaging or photo available?','Vomiting?','Diarrhea?','Still has access to it?'],br:'Name___ Age___ Sex___\nIngested: ___ Amount: ___\nTime: ___\nPackaging/photo? [Y/N]\nVomiting? [Y/N] Diarrhea? [Y/N]\nStill has access? [Y/N]\n⚠ Notify doctor immediately'}
+zh:{t:'中毒 / 异物',u:1,un:'⚠ 立即通知医生',b:['主诉 & 开始时间','进食饮水情况','精神状态'],s:['摄入物质','摄入量','摄入时间','是否有包装/照片','是否呕吐','是否腹泻','目前是否仍能接触'],br:'姓名___ 年龄___ 性别___\n摄入物：___ 量：___\n时间：___\n有包装/照片？[Y/N]\n呕吐？[Y/N] 腹泻？[Y/N]\n仍可接触？[Y/N]\n⚠ 立即通知医生',qs:'主人说约30分钟前宠物误食约2片布洛芬。呕吐1次。仍可接触到该药物。尚无腹泻。已立即通知医生。'},
+en:{t:'Toxin / Foreign Body',u:1,un:'⚠ Notify doctor now',b:['Chief complaint & onset','Eating & drinking','Energy level'],s:['What was ingested?','How much?','When?','Packaging or photo available?','Vomiting?','Diarrhea?','Still has access to it?'],br:'Name___ Age___ Sex___\nIngested: ___ Amount: ___\nTime: ___\nPackaging/photo? [Y/N]\nVomiting? [Y/N] Diarrhea? [Y/N]\nStill has access? [Y/N]\n⚠ Notify doctor immediately',qs:'Owner reports pet ingested approximately 2 ibuprofen tablets about 30 minutes ago. Vomited once. Still has access to the medication. No diarrhea yet. Doctor notified immediately.'}
 },
 well:{
-zh:{t:'健康检查',u:0,b:['来诊目的','进食饮水情况','大小便情况','精神状态'],s:['年检/疫苗/一般检查','饮食正常？','饮水正常？','排尿正常？','大便正常？','室内/外','其他关注'],br:'姓名___ 年龄___ 性别___\n目的：[年检/疫苗/一般]\n饮食：[正常/异常] 饮水：[正常/异常]\n排尿：[正常/异常] 大便：[正常/异常]\n室内/外：___ 关注：___'},
-en:{t:'Wellness Visit',u:0,b:['Reason for visit','Eating & drinking','Urination & defecation','Energy level'],s:['Annual exam / vaccines / check?','Eating normally?','Drinking normally?','Urinating normally?','BMs normal?','Indoor or outdoor?','Any concerns?'],br:'Name___ Age___ Sex___\nReason: [annual/vaccines/check]\nEating: [normal/abnormal] Drinking: [normal/abnormal]\nUrinating: [normal/abnormal] BMs: [normal/abnormal]\nIndoor/Outdoor: ___ Concerns: ___'}
+zh:{t:'健康检查',u:0,b:['来诊目的','进食饮水情况','大小便情况','精神状态'],s:['年检/疫苗/一般检查','饮食正常？','饮水正常？','排尿正常？','大便正常？','室内/外','其他关注'],br:'姓名___ 年龄___ 性别___\n目的：[年检/疫苗/一般]\n饮食：[正常/异常] 饮水：[正常/异常]\n排尿：[正常/异常] 大便：[正常/异常]\n室内/外：___ 关注：___',qs:'主人今日来做年度检查和常规疫苗。进食饮水大小便均正常。纯室内猫。目前无其他关注事项。'},
+en:{t:'Wellness Visit',u:0,b:['Reason for visit','Eating & drinking','Urination & defecation','Energy level'],s:['Annual exam / vaccines / check?','Eating normally?','Drinking normally?','Urinating normally?','BMs normal?','Indoor or outdoor?','Any concerns?'],br:'Name___ Age___ Sex___\nReason: [annual/vaccines/check]\nEating: [normal/abnormal] Drinking: [normal/abnormal]\nUrinating: [normal/abnormal] BMs: [normal/abnormal]\nIndoor/Outdoor: ___ Concerns: ___',qs:'Owner here for annual exam and routine vaccines. Eating, drinking, urination, and BMs all normal. Indoor only. No concerns at this time.'}
 }
 };
 var order=['vd','app','uri','resp','cough','pain','eye','ear','skin','neuro','toxin','well'];
@@ -131,6 +135,9 @@ function renderPanel(){
   p.className='panel on';
   p.innerHTML='<div class="ptitle">'+d.t+'</div>'
     +(d.u?'<div class="badge">'+d.un+'</div>':'')
+    +'<div class="qswrap"><div class="slab">'+l.qsLabel+'</div>'
+    +'<div class="qstext" id="qst">'+d.qs+'</div>'
+    +'<button class="qscbtn" onclick="cpqs()">'+l.qscopy+'</button></div>'
     +'<div class="slab">'+l.basicLabel+'</div>'
     +'<ul class="ql">'+d.b.map(function(q){return'<li>'+q+'</li>'}).join('')+'</ul>'
     +'<div class="slab">'+l.specLabel+'</div>'
@@ -153,6 +160,13 @@ function cp(){
   var b=document.querySelector('.cbtn');
   b.textContent=T[lang].copied;
   setTimeout(function(){b.textContent=T[lang].copy},1500);
+}
+function cpqs(){
+  var t=document.getElementById('qst').innerText;
+  navigator.clipboard.writeText(t).catch(function(){});
+  var b=document.querySelector('.qscbtn');
+  b.textContent=T[lang].qscopied;
+  setTimeout(function(){b.textContent=T[lang].qscopy},1500);
 }
 buildGrid();
 </script>
