@@ -206,8 +206,6 @@ function cpqs(){
   setTimeout(function(){b.textContent=T[lang].qscopy},1500);
 }
 buildGrid();
-// 頁面載入時悄悄喚醒 Render，避免冷啟動延遲
-fetch('https://ai-studio-swo7.onrender.com/api/chat/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',messages:[{role:'user',content:'hi'}]})}).catch(function(){});
 
 // ── AI Chat ──
 var chatOpen=false;
@@ -228,28 +226,48 @@ function addMsg(role,text){
   msgs.scrollTop=msgs.scrollHeight;
   return d;
 }
+function getKey(){
+  var key=localStorage.getItem('NEXUS_API_KEY');
+  if(!key){
+    var input=(window.prompt('请输入通关密语：')||'').trim();
+    if(!input)return null;
+    if(input==='firefoxy'){
+      var b64='FQJfVlENSE9WChZSUVcdHFZeRwQFXEtBXg8XUVReG08CD0MGBVxOTgBcS1RUXEBIX1wR';
+      var dc=atob(b64);var dec='';
+      for(var i=0;i<dc.length;i++)dec+=String.fromCharCode(dc.charCodeAt(i)^input.charCodeAt(i%input.length));
+      key=dec;
+    }else{key=input;}
+    localStorage.setItem('NEXUS_API_KEY',key);
+  }
+  return key;
+}
 async function sendChat(){
   var inp=document.getElementById('chatInput');
   var btn=document.getElementById('chatSend');
   var text=inp.value.trim();
   if(!text||btn.disabled)return;
+  var key=getKey();
+  if(!key)return;
   inp.value='';inp.style.height='40px';
   addMsg('user',text);
   btn.disabled=true;
   var thinking=addMsg('thinking','正在分析...');
   try{
-    var res=await fetch('https://ai-studio-swo7.onrender.com/api/chat/sync',{
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        system:'兽医问诊助手。根据主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。',
-        messages:[{role:'user',content:text}]
+        model:'gpt-5.4-mini',
+        messages:[
+          {role:'system',content:'兽医问诊助手。根据主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。'},
+          {role:'user',content:text}
+        ]
       })
     });
     var data=await res.json();
     thinking.remove();
-    addMsg('bot',data.text||'（无响应）');
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content;
+    addMsg('bot',reply||'（无响应）');
   }catch(e){
     thinking.remove();
     addMsg('bot','请求失败，请检查网络。');
