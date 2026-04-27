@@ -264,9 +264,9 @@ async function loadSchedule(){
       var meta=[];
       if(a.species) meta.push(a.species);
       if(a.breed) meta.push(a.breed);
-      if(a.sex) meta.push(a.sex+(a.neutered==='Y'?' (N)':''));
+      if(a.sex) meta.push(a.sex);
       if(a.age) meta.push(a.age);
-      if(a.weight) meta.push(a.weight+' kg');
+      if(a.weight) meta.push(a.weight);
       if(a.color) meta.push(a.color);
       var metaHtml=meta.length?'<div class="sch-meta">'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div>':'';
       card.innerHTML='<div class="sch-row1"><span class="sch-time">'+a.time+'</span><span class="sch-name">'+a.patient+'</span><span class="sch-type">'+a.type+'</span></div>'+metaHtml+(a.notes?'<div class="sch-notes">'+a.notes+'</div>':'')+'<div class="sch-room">'+a.room+(a.provider?' · '+a.provider:'')+'</div>';
