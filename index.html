@@ -240,8 +240,8 @@ async function sendChat(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        system:'你是一名兽医诊所的问诊助手。用户会描述宠物来看诊的原因，你要立刻列出问诊时需要问的重点问题，分为【基础必问】和【专项问题】两部分，每部分最多8条，简洁直接，用中文回答。不要废话，直接给问题列表。',
+        model:'claude-haiku-4-5-20251001',
+        system:'兽医问诊助手。根据主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。',
         messages:[{role:'user',content:text}]
       })
     });
