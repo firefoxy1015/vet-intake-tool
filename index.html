@@ -36,6 +36,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .qscbtn{margin-top:8px;background:#fff;border:1px solid #BFDBFE;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#2563EB;width:100%}
 .qscbtn:active{opacity:.7}
 
+/* ── Schedule Panel ── */
+.sch-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sch-title{font-size:13px;font-weight:700;color:#111}
+.sch-refresh{background:transparent;border:1px solid #ddd;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;color:#555}
+.sch-refresh:active{opacity:.7}
+.sch-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.sch-empty{font-size:12px;color:#aaa;text-align:center;padding:14px 0;background:#fff;border-radius:10px;border:1px solid #eee}
+.sch-card{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:10px 12px;cursor:pointer;transition:border-color .15s}
+.sch-card:active{opacity:.8}
+.sch-card.urg{border-left:3px solid #EF4444}
+.sch-card.surg{border-left:3px solid #7C3AED}
+.sch-card.vx{border-left:3px solid #059669}
+.sch-card.tech{border-left:3px solid #D97706}
+.sch-row1{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+.sch-time{font-size:11px;font-weight:700;color:#2563EB;flex-shrink:0}
+.sch-name{font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sch-type{font-size:10px;color:#888;flex-shrink:0}
+.sch-notes{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sch-room{font-size:10px;color:#bbb}
+
 /* ── AI Chat ── */
 .chat-fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:#2563EB;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.45);display:flex;align-items:center;justify-content:center;font-size:22px;z-index:100;transition:transform .15s}
 .chat-fab:active{transform:scale(.92)}
@@ -65,6 +85,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="lt" onclick="setLang('en',this)">EN</button>
   </div>
 </div>
+<!-- Today's Schedule -->
+<div class="sch-bar">
+  <div class="sch-title">📅 今日日程</div>
+  <button class="sch-refresh" onclick="loadSchedule()">刷新</button>
+</div>
+<div class="sch-list" id="schList"><div class="sch-empty">載入中...</div></div>
+
 <div class="grid" id="grid"></div>
 <div class="panel" id="panel"></div>
 </div>
@@ -206,6 +233,43 @@ function cpqs(){
   setTimeout(function(){b.textContent=T[lang].qscopy},1500);
 }
 buildGrid();
+
+// ── Schedule ──
+var NEO_API='https://ai-studio-swo7.onrender.com/api/neo-schedule';
+function schCardClass(type){
+  var t=(type||'').toLowerCase();
+  if(t.includes('surg'))return 'surg';
+  if(t.includes('vacc')||t.includes('vx')||t.includes('vaccine'))return 'vx';
+  if(t.includes('tech'))return 'tech';
+  if(t.includes('recheck')||t.includes('er')||t.includes('emerg'))return 'urg';
+  return '';
+}
+function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+async function loadSchedule(){
+  var el=document.getElementById('schList');
+  el.innerHTML='<div class="sch-empty">載入中...</div>';
+  try{
+    var r=await fetch(NEO_API+'?date='+todayStr());
+    var data=await r.json();
+    var appts=data.appointments||[];
+    if(!appts.length){el.innerHTML='<div class="sch-empty">暫無日程（請先在 IDEXX Neo 同步）</div>';return;}
+    // sort by time
+    appts.sort(function(a,b){return a.time.localeCompare(b.time);});
+    el.innerHTML='';
+    appts.forEach(function(a){
+      var card=document.createElement('div');
+      card.className='sch-card '+(schCardClass(a.type));
+      card.innerHTML='<div class="sch-row1"><span class="sch-time">'+a.time+'</span><span class="sch-name">'+a.patient+'</span><span class="sch-type">'+a.type+'</span></div>'+(a.notes?'<div class="sch-notes">'+a.notes+'</div>':'')+'<div class="sch-room">'+a.room+(a.provider?' · '+a.provider:'')+'</div>';
+      card.onclick=function(){
+        // pre-fill chat with this patient's chief complaint
+        var inp=document.getElementById('chatInput');
+        if(inp){inp.value=a.patient+(a.notes?' — '+a.notes:'');chatOpen=true;document.getElementById('chatBox').classList.add('open');inp.focus();}
+      };
+      el.appendChild(card);
+    });
+  }catch(e){el.innerHTML='<div class="sch-empty">載入失敗，請刷新</div>';}
+}
+loadSchedule();
 
 // ── AI Chat ──
 var chatOpen=false;
