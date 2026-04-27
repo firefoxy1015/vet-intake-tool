@@ -206,6 +206,8 @@ function cpqs(){
   setTimeout(function(){b.textContent=T[lang].qscopy},1500);
 }
 buildGrid();
+// 頁面載入時悄悄喚醒 Render，避免冷啟動延遲
+fetch('https://ai-studio-swo7.onrender.com/api/chat/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',messages:[{role:'user',content:'hi'}]})}).catch(function(){});
 
 // ── AI Chat ──
 var chatOpen=false;
