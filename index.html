@@ -133,6 +133,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <!-- Patient Detail Modal -->
 <div class="pdetail" id="pdetail"></div>
+
+<!-- AI Chat FAB -->
+<button class="chat-fab" onclick="toggleChat()" title="AI 问诊助手">🩺</button>
+
+<!-- Chat Box -->
+<div class="chat-box" id="chatBox">
+  <div class="chat-header">
+    <span id="chatTitle">🩺 AI 问诊助手</span>
+    <button class="chat-close" onclick="toggleChat()">×</button>
+  </div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-input-row">
+    <textarea class="chat-input" id="chatInput" placeholder="追问任何附加问题..." rows="1" onkeydown="chatKey(event)"></textarea>
+    <button class="chat-send" id="chatSend" onclick="sendChat()">发送</button>
+  </div>
+</div>
 <script>
 var lang='zh';
 var cur=null;
@@ -259,6 +275,7 @@ var NEO_API='https://ai-studio-swo7.onrender.com/api/neo-schedule';
 var NEO_HISTORY_API='https://ai-studio-swo7.onrender.com/api/neo-history';
 var currentPatient=null;        // {patient,species,breed,sex,age,weight,notes,pid}
 var currentHistory=null;        // [{header,title,vitals,body}, ...] — last consults
+var currentMeds=null;           // [{name,instructions,...}, ...] — active prescriptions
 function schCardClass(type){
   var t=(type||'').toLowerCase();
   if(t.includes('surg'))return 'surg';
@@ -297,6 +314,127 @@ async function loadSchedule(){
   }catch(e){el.innerHTML='<div class="sch-empty">載入失敗，請刷新</div>';}
 }
 loadSchedule();
+renderChatHistory();
+
+// ── AI Chat (per-patient persistent history) ──
+var chatOpen=false;
+var chatPid='global';   // active conversation key
+function chatStorageKey(pid){return 'chatHist_'+(pid||'global');}
+function loadChatHistory(pid){
+  try{var raw=localStorage.getItem(chatStorageKey(pid));return raw?JSON.parse(raw):[];}catch(e){return [];}
+}
+function saveChatHistory(pid,msgs){
+  try{localStorage.setItem(chatStorageKey(pid),JSON.stringify(msgs.slice(-50)));}catch(e){}
+}
+function renderChatHistory(){
+  var msgs=document.getElementById('chatMsgs');
+  msgs.innerHTML='';
+  var hist=loadChatHistory(chatPid);
+  if(!hist.length){
+    var d=document.createElement('div');
+    d.className='msg bot';
+    d.textContent=chatPid==='global'?'告诉我宠物今天来看什么问题，我马上给你列出需要问的问题。':'对这只宠物有任何附加问题？直接问我，已结合既往病史和用药。';
+    msgs.appendChild(d);
+  }else{
+    hist.forEach(function(m){
+      var d=document.createElement('div');
+      d.className='msg '+m.role;
+      d.textContent=m.text;
+      msgs.appendChild(d);
+    });
+  }
+  // jump to latest
+  msgs.scrollTop=msgs.scrollHeight;
+}
+function setChatContext(pid,name){
+  chatPid=pid||'global';
+  var t=document.getElementById('chatTitle');
+  if(t)t.textContent=name?('🩺 '+name):'🩺 AI 问诊助手';
+  renderChatHistory();
+}
+function toggleChat(){
+  chatOpen=!chatOpen;
+  document.getElementById('chatBox').classList.toggle('open',chatOpen);
+  if(chatOpen){
+    renderChatHistory();
+    document.getElementById('chatInput').focus();
+  }
+}
+function chatKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}
+}
+function addMsg(role,text,persist){
+  var d=document.createElement('div');
+  d.className='msg '+role;
+  d.textContent=text;
+  var msgs=document.getElementById('chatMsgs');
+  msgs.appendChild(d);
+  msgs.scrollTop=msgs.scrollHeight;
+  if(persist){
+    var hist=loadChatHistory(chatPid);
+    hist.push({role:role,text:text});
+    saveChatHistory(chatPid,hist);
+  }
+  return d;
+}
+async function sendChat(){
+  var inp=document.getElementById('chatInput');
+  var btn=document.getElementById('chatSend');
+  var text=inp.value.trim();
+  if(!text||btn.disabled)return;
+  var key=getKey();
+  if(!key)return;
+  inp.value='';inp.style.height='40px';
+  addMsg('user',text,true);
+  btn.disabled=true;
+  var thinking=addMsg('thinking','正在分析...',false);
+  try{
+    var sysPrompt='你是兽医技师助手。结合患者信息+既往病史+当前用药回答问题。简洁中文，重点突出，必要时分点。';
+    var ctxParts=[];
+    if(currentPatient){
+      var p=currentPatient;
+      var info=[p.patient];
+      if(p.species)info.push(p.species);
+      if(p.breed)info.push(p.breed);
+      if(p.sex)info.push(p.sex);
+      if(p.age)info.push(p.age);
+      if(p.weight)info.push(p.weight);
+      ctxParts.push('【患者】'+info.join(' / '));
+      if(p.notes)ctxParts.push('【今日主诉】'+p.notes);
+    }
+    if(currentMeds&&currentMeds.length){
+      var medList=currentMeds.map(function(m){return '· '+m.name+(m.instructions?' — '+m.instructions:'');}).join('\n');
+      ctxParts.push('【当前用药】\n'+medList);
+    }
+    if(currentHistory&&currentHistory.length){
+      var hist=currentHistory.slice(0,5).map(function(c,i){
+        return (i+1)+'. '+(c.header||'')+(c.title?' — '+c.title:'')+(c.vitals?' ['+c.vitals+']':'')+(c.body?'\n   '+c.body.slice(0,400).replace(/\s+/g,' '):'');
+      }).join('\n');
+      ctxParts.push('【过往就诊（最近5次）】\n'+hist);
+    }
+    // include prior chat turns for continuity
+    var priorHist=loadChatHistory(chatPid).slice(-12,-1);
+    var msgsArr=[{role:'system',content:sysPrompt+(ctxParts.length?'\n\n'+ctxParts.join('\n\n'):'')}];
+    priorHist.forEach(function(m){
+      if(m.role==='user'||m.role==='bot')msgsArr.push({role:m.role==='bot'?'assistant':'user',content:m.text});
+    });
+    msgsArr.push({role:'user',content:text});
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'gpt-5.4-mini',messages:msgsArr})
+    });
+    var data=await res.json();
+    thinking.remove();
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content;
+    addMsg('bot',reply||'（无响应）',true);
+  }catch(e){
+    thinking.remove();
+    addMsg('bot','请求失败，请检查网络。',false);
+  }
+  btn.disabled=false;
+  document.getElementById('chatInput').focus();
+}
 
 // ── API key ──
 function getKey(){
@@ -319,7 +457,9 @@ function getKey(){
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function closePD(){document.getElementById('pdetail').classList.remove('on');document.body.style.overflow='';}
 function openPatientDetail(a){
-  currentPatient=a; currentHistory=null;
+  currentPatient=a; currentHistory=null; currentMeds=null;
+  // switch chat context to this patient (per-patient persistent history)
+  setChatContext(a.patient_id||('appt_'+(a.time||'')+'_'+(a.patient||'')),a.patient||'');
   var pd=document.getElementById('pdetail');
   document.body.style.overflow='hidden';
   var meta=[];
@@ -350,6 +490,7 @@ function openPatientDetail(a){
       .then(function(r){return r.json();})
       .then(function(d){
         currentHistory=d.consults||[];
+        currentMeds=d.medications||[];
         renderHistory(d.consults||[]);
         renderMeds(d.medications||[]);
         runAI(a,d.consults||[],d.medications||[]);
