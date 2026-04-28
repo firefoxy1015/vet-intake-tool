@@ -90,6 +90,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pd-med-instr{color:#444;font-size:11.5px;line-height:1.5;margin-top:2px}
 .pd-med-meta{font-size:10.5px;color:#888;margin-top:3px}
 .pd-empty{font-size:12px;color:#aaa;text-align:center;padding:8px 0;font-style:italic}
+.pd-spell-btn{background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto}
+.pd-spell-btn:disabled{background:#aaa;cursor:not-allowed}
+.pd-spell-btn:active{opacity:.8}
+.pd-diff{font-size:12px;line-height:1.6;background:#FAFAFA;border:1px solid #eee;border-radius:6px;padding:8px;margin-bottom:6px}
+.pd-diff-old{color:#B91C1C;text-decoration:line-through;background:#FEE2E2;padding:1px 4px;border-radius:3px}
+.pd-diff-new{color:#065F46;background:#D1FAE5;padding:1px 4px;border-radius:3px;font-weight:700;margin-left:4px}
+.pd-diff-ctx{color:#888;font-size:11px;margin-top:2px;font-style:italic}
+.pd-confirm-row{display:flex;gap:8px;margin-top:10px}
+.pd-confirm-row button{flex:1;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer}
+.pd-c-yes{background:#10B981;color:#fff}
+.pd-c-no{background:#f3f4f6;color:#444}
 
 /* ── AI Chat ── */
 .chat-fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:#2563EB;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.45);display:flex;align-items:center;justify-content:center;font-size:22px;z-index:100;transition:transform .15s}
@@ -480,6 +491,7 @@ function openPatientDetail(a){
     +(a.notes?'<div class="pd-section"><div class="pd-h">📋 今日主诉</div><div class="pd-reason">'+esc(a.notes)+'</div></div>':'')
     +'<div class="pd-section"><div class="pd-h">🤖 AI 问诊重点 <span class="pd-spin"></span></div><div class="pd-ai-q skel" id="pdAi">正在结合既往病史与用药生成问诊重点...</div></div>'
     +'<div class="pd-section"><div class="pd-h">💊 当前用药 <span class="pd-spin" id="pdMedSpin"></span></div><div id="pdMeds"><div class="pd-empty">载入中...</div></div></div>'
+    +'<div class="pd-section"><div class="pd-h">🔧 拼写修复 <button class="pd-spell-btn" id="pdSpellBtn" onclick="spellCheck()">检查最新S部分</button></div><div id="pdSpell" class="pd-empty">点按钮，AI 会找出最近一次就诊 S（Subjective）部分的拼写错误</div></div>'
     +'<div class="pd-section"><div class="pd-h">📚 过往就诊 <span class="pd-spin" id="pdHistSpin"></span></div><div id="pdHist"><div class="pd-empty">载入中...</div></div></div>'
     +'</div>';
   pd.classList.add('on');
@@ -604,6 +616,95 @@ async function runAI(a,consults,meds){
   }
   if(spin)spin.remove();
 }
+// ── Spell-check latest consult's S section ──
+function extractS(body){
+  // Match S section: from "S = Subjective" header to next O/A/P header (or end)
+  if(!body)return '';
+  var m=body.match(/S\s*=\s*Subjective[^\n]*\n([\s\S]*?)(?=\n\s*[OAP]\s*=\s*(?:Objective|Assessment|Plan)|$)/i);
+  return m?m[1].trim():'';
+}
+async function spellCheck(){
+  var btn=document.getElementById('pdSpellBtn');
+  var box=document.getElementById('pdSpell');
+  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';return;}
+  var latest=currentHistory[0];
+  var sText=extractS(latest.body||'');
+  if(!sText){box.className='pd-empty';box.textContent='最新一次就诊没有 S（Subjective）部分';return;}
+  var key=getKey();if(!key)return;
+  btn.disabled=true;btn.textContent='检查中...';
+  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在查找拼写错误...</div>';
+  var sysPrompt='你是兽医病历的英文拼写检查助手。**只**修正拼写错误（typos / misspelled words），**绝对不要**改语法、语序、用词、缩写、标点。专业兽医术语和缩写（DUD, EDUD, VSCD, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, etc.）保持原样不动。返回纯 JSON：\n{"corrections":[{"original":"原词","corrected":"修正后","context":"前后5-10个词的上下文片段"}],"corrected_full":"完整修正后文本"}\n如果没有任何拼写错误，返回 {"corrections":[],"corrected_full":"原文"}。只返回 JSON，不要任何额外说明、Markdown 代码块。';
+  try{
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'gpt-5.4-mini',messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
+    });
+    var data=await res.json();
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+    // strip markdown fences if any
+    reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
+    var parsed;
+    try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
+    renderSpellPreview(parsed,sText,latest);
+  }catch(e){
+    box.innerHTML='<div class="pd-empty">⚠ 检查失败：'+esc(e.message||'网络错误')+'</div>';
+  }
+  btn.disabled=false;btn.textContent='检查最新S部分';
+}
+function renderSpellPreview(parsed,originalS,consult){
+  var box=document.getElementById('pdSpell');
+  var corrs=(parsed.corrections||[]).filter(function(c){return c.original&&c.corrected&&c.original!==c.corrected;});
+  if(!corrs.length){box.className='pd-empty';box.textContent='✓ 没有发现拼写错误';return;}
+  var html='<div style="font-size:12px;color:#666;margin-bottom:8px">就诊：'+esc(consult.header||'').slice(0,80)+'</div>';
+  html+=corrs.map(function(c){
+    return '<div class="pd-diff">'
+      +'<span class="pd-diff-old">'+esc(c.original)+'</span>'
+      +'<span class="pd-diff-new">'+esc(c.corrected)+'</span>'
+      +(c.context?'<div class="pd-diff-ctx">…'+esc(c.context)+'…</div>':'')
+      +'</div>';
+  }).join('');
+  html+='<div class="pd-confirm-row">'
+    +'<button class="pd-c-no" onclick="cancelSpell()">取消</button>'
+    +'<button class="pd-c-yes" onclick="applySpell()">确认修改 ('+corrs.length+')</button>'
+    +'</div>';
+  box.className='';
+  box.innerHTML=html;
+  // stash for apply
+  window._pendingSpell={pid:currentPatient&&currentPatient.patient_id,consult_id:consult.consult_id||'',original_s:originalS,corrected_s:parsed.corrected_full,corrections:corrs};
+}
+function cancelSpell(){
+  var box=document.getElementById('pdSpell');
+  box.className='pd-empty';box.textContent='已取消';
+  window._pendingSpell=null;
+}
+async function applySpell(){
+  var p=window._pendingSpell;if(!p)return;
+  var box=document.getElementById('pdSpell');
+  box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> 正在保存到 IDEXX Neo...</div>';
+  try{
+    var res=await fetch('https://ai-studio-swo7.onrender.com/api/neo-consult-update-s',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(p)
+    });
+    var data=await res.json();
+    if(data.ok){
+      box.className='';
+      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo</div>';
+      // refresh history with new data
+      if(currentPatient&&currentPatient.patient_id){
+        fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+      }
+    }else{
+      box.innerHTML='<div class="pd-empty">⚠ 保存失败：'+esc(data.message||'未知错误')+(data.diagnostic?'<pre style="text-align:left;white-space:pre-wrap;font-size:10px;color:#666;margin-top:6px">'+esc(JSON.stringify(data.diagnostic,null,2).slice(0,800))+'</pre>':'')+'</div>';
+    }
+  }catch(e){
+    box.innerHTML='<div class="pd-empty">⚠ 保存请求失败：'+esc(e.message||'')+'</div>';
+  }
+  window._pendingSpell=null;
+}
+
 // ESC to close modal
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePD();});
 </script>
