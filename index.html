@@ -491,33 +491,60 @@ function openPatientDetail(a){
       .then(function(d){
         currentHistory=d.consults||[];
         currentMeds=d.medications||[];
-        renderHistory(d.consults||[]);
         renderMeds(d.medications||[]);
         runAI(a,d.consults||[],d.medications||[]);
+        runHistorySummary(a,d.consults||[]);
       })
       .catch(function(){
-        renderHistory([]);renderMeds([]);
+        renderMeds([]);
         runAI(a,[],[]);
+        runHistorySummary(a,[]);
       });
   }else{
-    renderHistory([]);renderMeds([]);
+    renderMeds([]);
     runAI(a,[],[]);
+    runHistorySummary(a,[]);
   }
 }
-function renderHistory(consults){
-  var spin=document.getElementById('pdHistSpin');if(spin)spin.remove();
+async function runHistorySummary(a,consults){
+  var spin=document.getElementById('pdHistSpin');
   var el=document.getElementById('pdHist');if(!el)return;
-  if(!consults.length){el.innerHTML='<div class="pd-empty">无既往就诊记录</div>';return;}
-  el.innerHTML=consults.slice(0,5).map(function(c,i){
-    var bid='pdb'+i;
-    return '<div class="pd-consult">'
-      +'<div class="pd-c-head">'+esc(c.header||'')+'</div>'
-      +(c.title?'<div class="pd-c-title">'+esc(c.title)+'</div>':'')
-      +(c.vitals?'<div class="pd-c-vitals">'+esc(c.vitals)+'</div>':'')
-      +(c.body?'<div class="pd-c-body" id="'+bid+'">'+esc(c.body)+'</div>'
-        +'<button class="pd-c-toggle" onclick="document.getElementById(\''+bid+'\').classList.toggle(\'exp\');this.textContent=this.textContent===\'展开\'?\'收起\':\'展开\';">展开</button>':'')
-      +'</div>';
-  }).join('');
+  if(!consults.length){if(spin)spin.remove();el.innerHTML='<div class="pd-empty">无既往就诊记录</div>';return;}
+  var key=getKey();
+  if(!key){if(spin)spin.remove();el.innerHTML='<div class="pd-empty">⚠ 未配置 API 密钥</div>';return;}
+  // Build raw context — keep last 5, strip whitespace, drop nothing else (let AI filter prices)
+  var lines=consults.slice(0,5).map(function(c,i){
+    return '── 第'+(i+1)+'次 ──\n'
+      +(c.header?c.header+'\n':'')
+      +(c.title?'类型：'+c.title+'\n':'')
+      +(c.vitals?'体征：'+c.vitals+'\n':'')
+      +(c.body?'记录：'+c.body.replace(/\s+/g,' '):'');
+  }).join('\n\n');
+  var todayLine='【今日来诊】'+(a.type||'')+(a.notes?' — '+a.notes:'');
+  var sysPrompt='你是兽医技师助手。给定一只宠物**最近5次就诊的原始记录**和**今天的来诊原因**，请按下面格式总结每一次就诊（忽略价格、产品代码、批号等行政信息）：\n\n'
+    +'### 日期 — 来诊原因\n'
+    +'• 检查：做了哪些检查/处置（一行）\n'
+    +'• 结论：诊断或医生判断（一行）\n'
+    +'• 注意：关键随访点或风险（一行，没有就省略）\n\n'
+    +'每次就诊用以上格式，简洁中文。最后单独一段：\n\n'
+    +'### 🔗 与今日的关联\n'
+    +'用2-4句话说明历史病史与今日来诊原因的潜在联系（同一问题复发？药物副作用？慢性病管理？无明显关联也要说明）。\n\n'
+    +'直接给总结，不要前言。';
+  var userMsg=todayLine+'\n\n【最近5次就诊原始记录】\n'+lines;
+  try{
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'gpt-5.4-mini',messages:[{role:'system',content:sysPrompt},{role:'user',content:userMsg}]})
+    });
+    var data=await res.json();
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content;
+    if(spin)spin.remove();
+    el.innerHTML='<div class="pd-ai-q">'+esc(reply||'（无响应）')+'</div>';
+  }catch(e){
+    if(spin)spin.remove();
+    el.innerHTML='<div class="pd-empty">⚠ 总结失败，请刷新</div>';
+  }
 }
 function renderMeds(meds){
   var spin=document.getElementById('pdMedSpin');if(spin)spin.remove();
