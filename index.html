@@ -627,9 +627,13 @@ async function spellCheck(){
   var btn=document.getElementById('pdSpellBtn');
   var box=document.getElementById('pdSpell');
   if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';return;}
-  var latest=currentHistory[0];
-  var sText=extractS(latest.body||'');
-  if(!sText){box.className='pd-empty';box.textContent='最新一次就诊没有 S（Subjective）部分';return;}
+  // Walk from newest to oldest, take the first consult that has an S section
+  var latest=null,sText='';
+  for(var i=0;i<currentHistory.length;i++){
+    var s=extractS(currentHistory[i].body||'');
+    if(s){latest=currentHistory[i];sText=s;break;}
+  }
+  if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
   var key=getKey();if(!key)return;
   btn.disabled=true;btn.textContent='检查中...';
   box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在查找拼写错误...</div>';
