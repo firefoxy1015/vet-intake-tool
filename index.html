@@ -238,6 +238,9 @@ buildGrid();
 
 // ── Schedule ──
 var NEO_API='https://ai-studio-swo7.onrender.com/api/neo-schedule';
+var NEO_HISTORY_API='https://ai-studio-swo7.onrender.com/api/neo-history';
+var currentPatient=null;        // {patient,species,breed,sex,age,weight,notes,pid}
+var currentHistory=null;        // [{header,title,vitals,body}, ...] — last consults
 function schCardClass(type){
   var t=(type||'').toLowerCase();
   if(t.includes('surg'))return 'surg';
@@ -271,9 +274,16 @@ async function loadSchedule(){
       var metaHtml=meta.length?'<div class="sch-meta">'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div>':'';
       card.innerHTML='<div class="sch-row1"><span class="sch-time">'+a.time+'</span><span class="sch-name">'+a.patient+'</span><span class="sch-type">'+a.type+'</span></div>'+metaHtml+(a.notes?'<div class="sch-notes">'+a.notes+'</div>':'')+'<div class="sch-room">'+a.room+(a.provider?' · '+a.provider:'')+'</div>';
       card.onclick=function(){
-        // pre-fill chat with this patient's chief complaint
+        currentPatient=a; currentHistory=null;
         var inp=document.getElementById('chatInput');
-        if(inp){inp.value=a.patient+(a.notes?' — '+a.notes:'');chatOpen=true;document.getElementById('chatBox').classList.add('open');inp.focus();}
+        if(inp){inp.value=a.notes||a.type||'';chatOpen=true;document.getElementById('chatBox').classList.add('open');inp.focus();}
+        // async-load history in background
+        if(a.patient_id){
+          fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(a.patient_id))
+            .then(function(r){return r.json();})
+            .then(function(d){currentHistory=d.consults||[];})
+            .catch(function(){currentHistory=[];});
+        }
       };
       el.appendChild(card);
     });
@@ -327,14 +337,34 @@ async function sendChat(){
   btn.disabled=true;
   var thinking=addMsg('thinking','正在分析...');
   try{
+    // Build patient + history context
+    var sysPrompt='兽医问诊助手。根据患者信息+主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。';
+    var ctxParts=[];
+    if(currentPatient){
+      var p=currentPatient;
+      var info=[p.patient];
+      if(p.species)info.push(p.species);
+      if(p.breed)info.push(p.breed);
+      if(p.sex)info.push(p.sex);
+      if(p.age)info.push(p.age);
+      if(p.weight)info.push(p.weight);
+      ctxParts.push('【患者】'+info.join(' / '));
+    }
+    if(currentHistory&&currentHistory.length){
+      var hist=currentHistory.slice(0,5).map(function(c,i){
+        return (i+1)+'. '+(c.header||'')+(c.title?' — '+c.title:'')+(c.vitals?' ['+c.vitals+']':'')+(c.body?'\n   '+c.body.slice(0,500).replace(/\s+/g,' '):'');
+      }).join('\n');
+      ctxParts.push('【过往就诊（最近5次）】\n'+hist);
+    }
+    var userMsg=ctxParts.length?ctxParts.join('\n\n')+'\n\n【今日主诉】'+text:text;
     var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body:JSON.stringify({
         model:'gpt-5.4-mini',
         messages:[
-          {role:'system',content:'兽医问诊助手。根据主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。'},
-          {role:'user',content:text}
+          {role:'system',content:sysPrompt},
+          {role:'user',content:userMsg}
         ]
       })
     });
