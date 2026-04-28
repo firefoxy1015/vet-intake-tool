@@ -58,6 +58,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sch-meta span{background:#f3f4f6;padding:1px 6px;border-radius:4px}
 .sch-room{font-size:10px;color:#bbb;margin-top:3px}
 
+/* ── Patient Detail Modal ── */
+.pdetail{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:200;overflow-y:auto;padding:0}
+.pdetail.on{display:block}
+.pd-inner{background:#fff;max-width:520px;margin:0 auto;min-height:100vh;padding:14px 14px 60px}
+.pd-close{position:sticky;top:8px;float:right;background:#f3f4f6;border:none;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;color:#444;z-index:5}
+.pd-banner{background:linear-gradient(135deg,#2563EB,#3B82F6);color:#fff;border-radius:12px;padding:14px;margin-bottom:14px;clear:both}
+.pd-name{font-size:20px;font-weight:800;margin-bottom:4px}
+.pd-meta{font-size:12px;opacity:.92;display:flex;flex-wrap:wrap;gap:8px}
+.pd-meta span{background:rgba(255,255,255,.18);padding:2px 8px;border-radius:4px}
+.pd-time{font-size:11px;opacity:.85;margin-top:6px}
+.pd-section{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:10px}
+.pd-h{font-size:11px;font-weight:700;color:#666;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.pd-h .pd-spin{display:inline-block;width:10px;height:10px;border:2px solid #ddd;border-top-color:#2563EB;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pd-reason{font-size:13px;color:#222;line-height:1.55;background:#FFFBEB;border-left:3px solid #F59E0B;padding:8px 10px;border-radius:4px;white-space:pre-wrap}
+.pd-ai-q{font-size:13px;color:#1e293b;line-height:1.7;white-space:pre-wrap}
+.pd-ai-q.skel{color:#bbb;font-style:italic}
+.pd-consult{border-top:1px solid #f0f0f0;padding:8px 0}
+.pd-consult:first-child{border-top:none;padding-top:0}
+.pd-c-head{font-size:11.5px;font-weight:700;color:#2563EB;margin-bottom:2px}
+.pd-c-title{font-size:12px;color:#444;margin-bottom:3px}
+.pd-c-vitals{font-size:11px;color:#666;background:#f9fafb;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:4px}
+.pd-c-body{font-size:11.5px;color:#555;line-height:1.55;max-height:80px;overflow:hidden;position:relative}
+.pd-c-body.exp{max-height:none}
+.pd-c-toggle{font-size:10.5px;color:#2563EB;background:none;border:none;cursor:pointer;padding:2px 0;margin-top:2px}
+.pd-med{border-top:1px solid #f0f0f0;padding:8px 0;font-size:12px}
+.pd-med:first-child{border-top:none;padding-top:0}
+.pd-med-name{font-weight:700;color:#111;font-size:12.5px}
+.pd-med-rx{font-size:10.5px;color:#888;margin-left:4px}
+.pd-med-instr{color:#444;font-size:11.5px;line-height:1.5;margin-top:2px}
+.pd-med-meta{font-size:10.5px;color:#888;margin-top:3px}
+.pd-empty{font-size:12px;color:#aaa;text-align:center;padding:8px 0;font-style:italic}
+
 /* ── AI Chat ── */
 .chat-fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:#2563EB;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.45);display:flex;align-items:center;justify-content:center;font-size:22px;z-index:100;transition:transform .15s}
 .chat-fab:active{transform:scale(.92)}
@@ -98,23 +131,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="panel" id="panel"></div>
 </div>
 
-<!-- AI Chat FAB -->
-<button class="chat-fab" onclick="toggleChat()" title="AI 问诊助手">🩺</button>
-
-<!-- Chat Box -->
-<div class="chat-box" id="chatBox">
-  <div class="chat-header">
-    <span>🩺 AI 问诊助手</span>
-    <button class="chat-close" onclick="toggleChat()">×</button>
-  </div>
-  <div class="chat-msgs" id="chatMsgs">
-    <div class="msg bot">告诉我宠物今天来看什么问题，我马上给你列出需要问的问题。</div>
-  </div>
-  <div class="chat-input-row">
-    <textarea class="chat-input" id="chatInput" placeholder="例：猫咪吐了3次，有血..." rows="1" onkeydown="chatKey(event)"></textarea>
-    <button class="chat-send" id="chatSend" onclick="sendChat()">发送</button>
-  </div>
-</div>
+<!-- Patient Detail Modal -->
+<div class="pdetail" id="pdetail"></div>
 <script>
 var lang='zh';
 var cur=null;
@@ -273,43 +291,14 @@ async function loadSchedule(){
       if(a.color) meta.push(a.color);
       var metaHtml=meta.length?'<div class="sch-meta">'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div>':'';
       card.innerHTML='<div class="sch-row1"><span class="sch-time">'+a.time+'</span><span class="sch-name">'+a.patient+'</span><span class="sch-type">'+a.type+'</span></div>'+metaHtml+(a.notes?'<div class="sch-notes">'+a.notes+'</div>':'')+'<div class="sch-room">'+a.room+(a.provider?' · '+a.provider:'')+'</div>';
-      card.onclick=function(){
-        currentPatient=a; currentHistory=null;
-        var inp=document.getElementById('chatInput');
-        if(inp){inp.value=a.notes||a.type||'';chatOpen=true;document.getElementById('chatBox').classList.add('open');inp.focus();}
-        // async-load history in background
-        if(a.patient_id){
-          fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(a.patient_id))
-            .then(function(r){return r.json();})
-            .then(function(d){currentHistory=d.consults||[];})
-            .catch(function(){currentHistory=[];});
-        }
-      };
+      card.onclick=function(){openPatientDetail(a);};
       el.appendChild(card);
     });
   }catch(e){el.innerHTML='<div class="sch-empty">載入失敗，請刷新</div>';}
 }
 loadSchedule();
 
-// ── AI Chat ──
-var chatOpen=false;
-function toggleChat(){
-  chatOpen=!chatOpen;
-  document.getElementById('chatBox').classList.toggle('open',chatOpen);
-  if(chatOpen)document.getElementById('chatInput').focus();
-}
-function chatKey(e){
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}
-}
-function addMsg(role,text){
-  var d=document.createElement('div');
-  d.className='msg '+role;
-  d.textContent=text;
-  var msgs=document.getElementById('chatMsgs');
-  msgs.appendChild(d);
-  msgs.scrollTop=msgs.scrollHeight;
-  return d;
-}
+// ── API key ──
 function getKey(){
   var key=localStorage.getItem('NEXUS_API_KEY');
   if(!key){
@@ -325,60 +314,130 @@ function getKey(){
   }
   return key;
 }
-async function sendChat(){
-  var inp=document.getElementById('chatInput');
-  var btn=document.getElementById('chatSend');
-  var text=inp.value.trim();
-  if(!text||btn.disabled)return;
+
+// ── Patient Detail Modal (auto-loaded) ──
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function closePD(){document.getElementById('pdetail').classList.remove('on');document.body.style.overflow='';}
+function openPatientDetail(a){
+  currentPatient=a; currentHistory=null;
+  var pd=document.getElementById('pdetail');
+  document.body.style.overflow='hidden';
+  var meta=[];
+  if(a.species)meta.push(a.species);
+  if(a.breed)meta.push(a.breed);
+  if(a.sex)meta.push(a.sex);
+  if(a.age)meta.push(a.age);
+  if(a.weight)meta.push(a.weight);
+  if(a.color)meta.push(a.color);
+  var metaHtml=meta.map(function(m){return '<span>'+esc(m)+'</span>';}).join('');
+  pd.innerHTML='<div class="pd-inner">'
+    +'<button class="pd-close" onclick="closePD()">×</button>'
+    +'<div class="pd-banner">'
+      +'<div class="pd-name">'+esc(a.patient||'')+'</div>'
+      +'<div class="pd-meta">'+metaHtml+'</div>'
+      +'<div class="pd-time">'+esc(a.time||'')+' · '+esc(a.type||'')+(a.provider?' · '+esc(a.provider):'')+(a.room?' · '+esc(a.room):'')+'</div>'
+    +'</div>'
+    +(a.notes?'<div class="pd-section"><div class="pd-h">📋 今日主诉</div><div class="pd-reason">'+esc(a.notes)+'</div></div>':'')
+    +'<div class="pd-section"><div class="pd-h">🤖 AI 问诊重点 <span class="pd-spin"></span></div><div class="pd-ai-q skel" id="pdAi">正在结合既往病史与用药生成问诊重点...</div></div>'
+    +'<div class="pd-section"><div class="pd-h">💊 当前用药 <span class="pd-spin" id="pdMedSpin"></span></div><div id="pdMeds"><div class="pd-empty">载入中...</div></div></div>'
+    +'<div class="pd-section"><div class="pd-h">📚 过往就诊 <span class="pd-spin" id="pdHistSpin"></span></div><div id="pdHist"><div class="pd-empty">载入中...</div></div></div>'
+    +'</div>';
+  pd.classList.add('on');
+  pd.onclick=function(e){if(e.target===pd)closePD();};
+  // load history + meds, then trigger AI
+  if(a.patient_id){
+    fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(a.patient_id))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        currentHistory=d.consults||[];
+        renderHistory(d.consults||[]);
+        renderMeds(d.medications||[]);
+        runAI(a,d.consults||[],d.medications||[]);
+      })
+      .catch(function(){
+        renderHistory([]);renderMeds([]);
+        runAI(a,[],[]);
+      });
+  }else{
+    renderHistory([]);renderMeds([]);
+    runAI(a,[],[]);
+  }
+}
+function renderHistory(consults){
+  var spin=document.getElementById('pdHistSpin');if(spin)spin.remove();
+  var el=document.getElementById('pdHist');if(!el)return;
+  if(!consults.length){el.innerHTML='<div class="pd-empty">无既往就诊记录</div>';return;}
+  el.innerHTML=consults.slice(0,5).map(function(c,i){
+    var bid='pdb'+i;
+    return '<div class="pd-consult">'
+      +'<div class="pd-c-head">'+esc(c.header||'')+'</div>'
+      +(c.title?'<div class="pd-c-title">'+esc(c.title)+'</div>':'')
+      +(c.vitals?'<div class="pd-c-vitals">'+esc(c.vitals)+'</div>':'')
+      +(c.body?'<div class="pd-c-body" id="'+bid+'">'+esc(c.body)+'</div>'
+        +'<button class="pd-c-toggle" onclick="document.getElementById(\''+bid+'\').classList.toggle(\'exp\');this.textContent=this.textContent===\'展开\'?\'收起\':\'展开\';">展开</button>':'')
+      +'</div>';
+  }).join('');
+}
+function renderMeds(meds){
+  var spin=document.getElementById('pdMedSpin');if(spin)spin.remove();
+  var el=document.getElementById('pdMeds');if(!el)return;
+  if(!meds.length){el.innerHTML='<div class="pd-empty">无活跃处方</div>';return;}
+  el.innerHTML=meds.map(function(m){
+    var meta=[];
+    if(m.quantity)meta.push('Qty: '+m.quantity);
+    if(m.refills_left!=null)meta.push('Refills: '+m.refills_left+'/'+m.refills);
+    if(m.filled_at)meta.push(m.filled_at);
+    if(m.provider)meta.push(m.provider);
+    return '<div class="pd-med">'
+      +'<div><span class="pd-med-name">'+esc(m.name||'')+'</span>'+(m.rx_id?'<span class="pd-med-rx">#'+esc(m.rx_id)+'</span>':'')+'</div>'
+      +(m.instructions?'<div class="pd-med-instr">'+esc(m.instructions)+'</div>':'')
+      +(meta.length?'<div class="pd-med-meta">'+esc(meta.join(' · '))+'</div>':'')
+      +'</div>';
+  }).join('');
+}
+async function runAI(a,consults,meds){
+  var el=document.getElementById('pdAi');if(!el)return;
+  var spin=document.querySelector('#pdetail .pd-h .pd-spin');
   var key=getKey();
-  if(!key)return;
-  inp.value='';inp.style.height='40px';
-  addMsg('user',text);
-  btn.disabled=true;
-  var thinking=addMsg('thinking','正在分析...');
+  if(!key){el.classList.remove('skel');el.textContent='⚠ 未配置 API 密钥';if(spin)spin.remove();return;}
+  var info=[a.patient];
+  if(a.species)info.push(a.species);
+  if(a.breed)info.push(a.breed);
+  if(a.sex)info.push(a.sex);
+  if(a.age)info.push(a.age);
+  if(a.weight)info.push(a.weight);
+  var ctxParts=['【患者】'+info.join(' / ')];
+  ctxParts.push('【今日来诊】'+(a.type||'')+(a.notes?' — '+a.notes:''));
+  if(meds&&meds.length){
+    var medList=meds.map(function(m){return '· '+m.name+(m.instructions?' — '+m.instructions:'');}).join('\n');
+    ctxParts.push('【当前用药】\n'+medList);
+  }
+  if(consults&&consults.length){
+    var hist=consults.slice(0,5).map(function(c,i){
+      return (i+1)+'. '+(c.header||'')+(c.title?' — '+c.title:'')+(c.vitals?' ['+c.vitals+']':'')+(c.body?'\n   '+c.body.slice(0,400).replace(/\s+/g,' '):'');
+    }).join('\n');
+    ctxParts.push('【过往就诊（最近5次）】\n'+hist);
+  }
+  var sysPrompt='你是兽医技师助手。根据患者信息+今日主诉+既往病史+当前用药，直接列出今天接诊时**必须问主人的问题**，分【基础必问】和【专项问题】两类，每类最多6条，简洁中文，问句形式。如有用药相关注意事项或过往病史相关风险点，单独用【⚠ 注意】列出。直接给列表，不要多余解释。';
+  var userMsg=ctxParts.join('\n\n');
   try{
-    // Build patient + history context
-    var sysPrompt='兽医问诊助手。根据患者信息+主诉列出需问的问题，分【基础必问】和【专项问题】，每部分最多6条，简洁，中文。直接给列表。';
-    var ctxParts=[];
-    if(currentPatient){
-      var p=currentPatient;
-      var info=[p.patient];
-      if(p.species)info.push(p.species);
-      if(p.breed)info.push(p.breed);
-      if(p.sex)info.push(p.sex);
-      if(p.age)info.push(p.age);
-      if(p.weight)info.push(p.weight);
-      ctxParts.push('【患者】'+info.join(' / '));
-    }
-    if(currentHistory&&currentHistory.length){
-      var hist=currentHistory.slice(0,5).map(function(c,i){
-        return (i+1)+'. '+(c.header||'')+(c.title?' — '+c.title:'')+(c.vitals?' ['+c.vitals+']':'')+(c.body?'\n   '+c.body.slice(0,500).replace(/\s+/g,' '):'');
-      }).join('\n');
-      ctxParts.push('【过往就诊（最近5次）】\n'+hist);
-    }
-    var userMsg=ctxParts.length?ctxParts.join('\n\n')+'\n\n【今日主诉】'+text:text;
     var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({
-        model:'gpt-5.4-mini',
-        messages:[
-          {role:'system',content:sysPrompt},
-          {role:'user',content:userMsg}
-        ]
-      })
+      body:JSON.stringify({model:'gpt-5.4-mini',messages:[{role:'system',content:sysPrompt},{role:'user',content:userMsg}]})
     });
     var data=await res.json();
-    thinking.remove();
     var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content;
-    addMsg('bot',reply||'（无响应）');
+    el.classList.remove('skel');
+    el.textContent=reply||'（无响应）';
   }catch(e){
-    thinking.remove();
-    addMsg('bot','请求失败，请检查网络。');
+    el.classList.remove('skel');
+    el.textContent='⚠ AI 请求失败，请检查网络';
   }
-  btn.disabled=false;
-  document.getElementById('chatInput').focus();
+  if(spin)spin.remove();
 }
+// ESC to close modal
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePD();});
 </script>
 </body>
 </html>
