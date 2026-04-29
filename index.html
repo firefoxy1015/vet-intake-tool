@@ -37,8 +37,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .qscbtn:active{opacity:.7}
 
 /* ── Schedule Panel ── */
-.sch-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.sch-title{font-size:13px;font-weight:700;color:#111}
+.sch-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.sch-title{font-size:13px;font-weight:700;color:#111;margin-right:auto}
+.sch-nav{background:transparent;border:1px solid #ddd;border-radius:8px;padding:4px 9px;font-size:11px;cursor:pointer;color:#555}
+.sch-nav:hover{background:#f5f5f5}
+.sch-nav:disabled{opacity:.35;cursor:not-allowed}
+.sch-date{border:1px solid #ddd;border-radius:8px;padding:3px 6px;font-size:11px;color:#333;background:#fff}
 .sch-refresh{background:transparent;border:1px solid #ddd;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;color:#555}
 .sch-refresh:active{opacity:.7}
 .sch-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
@@ -131,10 +135,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="lt" onclick="setLang('en',this)">EN</button>
   </div>
 </div>
-<!-- Today's Schedule -->
+<!-- Schedule (with date picker, ±3 days) -->
 <div class="sch-bar">
-  <div class="sch-title">📅 今日日程</div>
-  <button class="sch-refresh" onclick="loadSchedule()">刷新</button>
+  <div class="sch-title">📅 <span id="schTitle">今日日程</span></div>
+  <button class="sch-nav" onclick="shiftSchDate(-1)" title="前一天">◀</button>
+  <input type="date" id="schDate" class="sch-date" onchange="loadSchedule()">
+  <button class="sch-nav" onclick="shiftSchDate(1)" title="後一天">▶</button>
+  <button class="sch-nav" onclick="setSchDate(todayStr())" title="回到今天">今天</button>
+  <button class="sch-refresh" onclick="loadSchedule(true)">刷新</button>
 </div>
 <div class="sch-list" id="schList"><div class="sch-empty">載入中...</div></div>
 
@@ -296,11 +304,36 @@ function schCardClass(type){
   return '';
 }
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-async function loadSchedule(){
+function shiftDateStr(s,delta){var p=s.split('-');var d=new Date(+p[0],+p[1]-1,+p[2]);d.setDate(d.getDate()+delta);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function diffDays(a,b){var pa=a.split('-'),pb=b.split('-');var da=new Date(+pa[0],+pa[1]-1,+pa[2]),db=new Date(+pb[0],+pb[1]-1,+pb[2]);return Math.round((da-db)/86400000);}
+function setSchDate(d){var inp=document.getElementById('schDate');if(inp){inp.value=d;}loadSchedule();}
+function shiftSchDate(delta){var inp=document.getElementById('schDate');var cur=inp.value||todayStr();var next=shiftDateStr(cur,delta);var d=diffDays(next,todayStr());if(d>3||d<-3)return;inp.value=next;loadSchedule();}
+function updateSchTitle(){
+  var inp=document.getElementById('schDate');var d=inp&&inp.value||todayStr();
+  var dd=diffDays(d,todayStr());
+  var label=d;
+  if(dd===0)label='今日 ('+d+')';
+  else if(dd===-1)label='昨日 ('+d+')';
+  else if(dd===1)label='明日 ('+d+')';
+  else if(dd<0)label=(-dd)+' 天前 ('+d+')';
+  else label=dd+' 天后 ('+d+')';
+  var t=document.getElementById('schTitle');if(t)t.textContent=label+' 日程';
+  // disable nav buttons at the ±3 day boundary
+  var navs=document.querySelectorAll('.sch-nav');
+  if(navs[0])navs[0].disabled=(dd<=-3);
+  if(navs[1])navs[1].disabled=(dd>=3);
+}
+async function loadSchedule(force){
+  var inp=document.getElementById('schDate');
+  if(inp&&!inp.value)inp.value=todayStr();
+  // Set min/max to enforce ±3 day window in the picker
+  if(inp){inp.min=shiftDateStr(todayStr(),-3);inp.max=shiftDateStr(todayStr(),3);}
+  updateSchTitle();
+  var date=inp&&inp.value||todayStr();
   var el=document.getElementById('schList');
   el.innerHTML='<div class="sch-empty">載入中...</div>';
   try{
-    var r=await fetch(NEO_API+'?date='+todayStr());
+    var r=await fetch(NEO_API+'?date='+date+(force?'&refresh=true':''));
     var data=await r.json();
     var appts=data.appointments||[];
     if(!appts.length){el.innerHTML='<div class="sch-empty">暫無日程（請先在 IDEXX Neo 同步）</div>';return;}
@@ -637,12 +670,21 @@ async function spellCheck(){
   var key=getKey();if(!key)return;
   btn.disabled=true;btn.textContent='检查中...';
   box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在查找拼写错误...</div>';
-  var sysPrompt='你是兽医病历的英文拼写检查助手。**只**修正拼写错误（typos / misspelled words），**绝对不要**改语法、语序、用词、缩写、标点。专业兽医术语和缩写（DUD, EDUD, VSCD, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, etc.）保持原样不动。返回纯 JSON：\n{"corrections":[{"original":"原词","corrected":"修正后","context":"前后5-10个词的上下文片段"}],"corrected_full":"完整修正后文本"}\n如果没有任何拼写错误，返回 {"corrections":[],"corrected_full":"原文"}。只返回 JSON，不要任何额外说明、Markdown 代码块。';
+  var sysPrompt='你是兽医病历的英文拼写检查助手。规则（按优先级）：\n'
+    +'1. 只修正**确凿无疑的英文拼写错误**（typo / misspelled word）。如果不确定，绝对不改。\n'
+    +'2. **不准**改语法、时态、单复数、语序、用词、大小写、标点、空格、换行。\n'
+    +'3. **不准**修改任何兽医术语和缩写，包括但不限于：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, OS, OD, OU, AU, AD, AS, BID, TID, SID, PRN, PO, SQ, IM, IV, q4h, q12h.\n'
+    +'4. **不准**修改人名、药名、品牌名、首字母缩写。\n'
+    +'5. 同样的输入必须**永远返回同样的结果**。如果一个词你某次会改、某次不会改，那就**永远不要改它**。\n'
+    +'6. 输出必须是纯 JSON：\n'
+    +'{"corrections":[{"original":"原词","corrected":"修正后","context":"前后5-10个词的上下文片段"}],"corrected_full":"完整修正后文本"}\n'
+    +'7. 如果没有任何拼写错误，返回 {"corrections":[],"corrected_full":"原文"}。\n'
+    +'8. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
   try{
     var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({model:'gpt-5.4-mini',messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
+      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
     });
     var data=await res.json();
     var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
@@ -695,11 +737,17 @@ async function applySpell(){
     var data=await res.json();
     if(data.ok){
       box.className='';
-      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo</div>';
-      // refresh history with new data
+      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo，正在刷新...</div>';
+      // Refresh history AND update the in-page cache so the next spell-check
+      // runs against the corrected text instead of the stale copy.
       if(currentPatient&&currentPatient.patient_id){
-        fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+        try{
+          var rr=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+          var rd=await rr.json();
+          if(rd&&rd.consults){currentHistory=rd.consults;}
+        }catch(_){}
       }
+      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo（已刷新）</div>';
     }else{
       box.innerHTML='<div class="pd-empty">⚠ 保存失败：'+esc(data.message||'未知错误')+(data.diagnostic?'<pre style="text-align:left;white-space:pre-wrap;font-size:10px;color:#666;margin-top:6px">'+esc(JSON.stringify(data.diagnostic,null,2).slice(0,800))+'</pre>':'')+'</div>';
     }
