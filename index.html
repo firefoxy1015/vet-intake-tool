@@ -984,12 +984,29 @@ async function genBriefing(){
       if(/\bmale\b/.test(t))return 'M';
       return s;
     }
+    // Tag each med: only meds prescribed within last 14 days are "recent" (mention-worthy by default).
+    // Older meds are still passed in but marked stale — AI must NOT mention them unless latest S explicitly references them.
+    var TODAY=new Date();
+    function daysAgo(dateStr){
+      if(!dateStr)return null;
+      var d=new Date(dateStr);if(isNaN(d.getTime()))return null;
+      return Math.floor((TODAY-d)/86400000);
+    }
     var ctx={
       patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex_code:sexCode(currentPatient.sex),sex_raw:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
       today_reason:currentPatient.notes||'',
       latest_visit_header:latestHeader,
       latest_visit_S:latestS,
-      current_meds:(currentMeds||[]).slice(0,15).map(function(m){return {name:m.name,instructions:m.instructions||'',date:m.date||'',provider:m.provider||''};}),
+      current_meds:(currentMeds||[]).slice(0,15).map(function(m){
+        var ago=daysAgo(m.date);
+        return {
+          name:m.name,
+          instructions:m.instructions||'',
+          date:m.date||'',
+          days_ago:ago,
+          recent:(ago!==null&&ago<=14)
+        };
+      }),
       past_visits:(currentHistory||[]).slice(0,8).map(function(c){return {header:c.header,title:c.title,body_excerpt:(c.body||'').slice(0,400)};})
     };
     btn.textContent='生成中...';
@@ -998,7 +1015,10 @@ async function genBriefing(){
       +'**两段都严格按这个顺序写**：\n'
       +'1. 开头先说病患信息：名字、年纪、性别代码（M=未绝育公，F=未绝育母，MN=绝育公，FS=绝育母）、品种。例如：中文 "Caramel 是只 2岁7个月的 FS Domestic Shorthair"，英文 "Caramel is a 2y7mo FS Domestic Shorthair"。\n'
       +'2. 紧接着说**今天的主诉**（today_reason / chief complaint）。\n'
-      +'3. 然后说**和主诉密切相关的内容**——包括相关既往（past_visits 里跟今天主诉有关的）、相关用药史（current_meds + 过去开过的药里跟主诉有关的）。如果都没相关的就跳过这步，**不要硬凑**。\n'
+      +'3. 然后说**和主诉密切相关的内容**——包括相关既往（past_visits 里跟今天主诉有关的）、相关用药。**用药规则铁律**：\n'
+      +'   - 只有满足下面**任意一个条件**的药才能提：(a) `recent:true`（14天内开的）；(b) 最新 S 文本里**明确提到**了这个药名。\n'
+      +'   - 一年前、几个月前的药（recent:false）**绝对不准提**，哪怕看起来跟主诉相关。\n'
+      +'   - 如果两个条件都不满足，就跳过用药史，不要写"无相关用药"。\n'
       +'4. 最后总结**最新一次 S 部分里其他还没提到的关键信息**（饮食/排便/精神/家里其他动物等）。\n\n'
       +'**输出格式**（严格遵守，两个标记必须一字不差）：\n'
       +'【中文总结】\n'
