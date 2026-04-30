@@ -105,6 +105,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pd-confirm-row button{flex:1;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer}
 .pd-c-yes{background:#10B981;color:#fff}
 .pd-c-no{background:#f3f4f6;color:#444}
+/* ── Rewrite suggestions ── */
+.pd-rw-item{background:#FAFAFA;border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:8px;font-size:12px}
+.pd-rw-item.done-yes{background:#ECFDF5;border-color:#A7F3D0}
+.pd-rw-item.done-no{background:#F3F4F6;border-color:#E5E7EB;opacity:.55}
+.pd-rw-old{color:#7c2d12;background:#FEF3C7;padding:4px 7px;border-radius:5px;line-height:1.55;display:block;margin-bottom:5px;white-space:pre-wrap}
+.pd-rw-new{color:#065F46;background:#D1FAE5;padding:4px 7px;border-radius:5px;font-weight:600;line-height:1.55;display:block;margin-bottom:5px;white-space:pre-wrap}
+.pd-rw-why{font-size:11px;color:#666;font-style:italic;margin-bottom:7px}
+.pd-rw-row{display:flex;gap:6px}
+.pd-rw-row button{flex:1;border:none;border-radius:6px;padding:6px;font-size:11.5px;font-weight:700;cursor:pointer}
+.pd-rw-yes{background:#10B981;color:#fff}
+.pd-rw-no{background:#E5E7EB;color:#444}
+.pd-rw-foot{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed #ddd}
+.pd-rw-foot button{flex:1;border:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:700;cursor:pointer}
+.pd-rw-save{background:#2563EB;color:#fff}
+.pd-rw-save:disabled{background:#aaa;cursor:not-allowed}
+/* ── Briefing ── */
+.pd-brief-text{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:11px;font-size:12.5px;line-height:1.7;color:#0c4a6e;white-space:pre-wrap}
+.pd-brief-row{display:flex;gap:8px;margin-top:8px}
+.pd-brief-row button{flex:1;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;background:#0EA5E9;color:#fff}
 
 /* ── AI Chat ── */
 .chat-fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:#2563EB;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.45);display:flex;align-items:center;justify-content:center;font-size:22px;z-index:100;transition:transform .15s}
@@ -525,6 +544,8 @@ function openPatientDetail(a){
     +'<div class="pd-section"><div class="pd-h">🤖 AI 问诊重点 <span class="pd-spin"></span></div><div class="pd-ai-q skel" id="pdAi">正在结合既往病史与用药生成问诊重点...</div></div>'
     +'<div class="pd-section"><div class="pd-h">💊 当前用药 <span class="pd-spin" id="pdMedSpin"></span></div><div id="pdMeds"><div class="pd-empty">载入中...</div></div></div>'
     +'<div class="pd-section"><div class="pd-h">🔧 拼写修复 <button class="pd-spell-btn" id="pdSpellBtn" onclick="spellCheck()">检查最新S部分</button></div><div id="pdSpell" class="pd-empty">点按钮，AI 会找出最近一次就诊 S（Subjective）部分的拼写错误</div></div>'
+    +'<div class="pd-section"><div class="pd-h">✏️ 语句润色建议 <button class="pd-spell-btn" id="pdRewriteBtn" style="background:#6366F1" onclick="rewriteSuggest()">生成建议</button></div><div id="pdRewrite" class="pd-empty">点按钮，AI 会逐句给最新 S 部分的润色建议（每条单独 Approve）</div></div>'
+    +'<div class="pd-section"><div class="pd-h">📋 给医生的 Briefing <button class="pd-spell-btn" id="pdBriefBtn" style="background:#0EA5E9" onclick="genBriefing()">生成 Briefing</button></div><div id="pdBrief" class="pd-empty">点按钮，AI 会综合最新 S + 病史 + 用药生成一段连贯的医生 briefing</div></div>'
     +'<div class="pd-section"><div class="pd-h">📚 过往就诊 <span class="pd-spin" id="pdHistSpin"></span></div><div id="pdHist"><div class="pd-empty">载入中...</div></div></div>'
     +'</div>';
   pd.classList.add('on');
@@ -755,6 +776,189 @@ async function applySpell(){
     box.innerHTML='<div class="pd-empty">⚠ 保存请求失败：'+esc(e.message||'')+'</div>';
   }
   window._pendingSpell=null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Sentence-level rewrite suggestions for the latest S section.
+//  Each suggestion can be approved/skipped individually; approved ones are
+//  saved together via the existing /api/neo-consult-update-s endpoint.
+// ─────────────────────────────────────────────────────────────────────────
+async function rewriteSuggest(){
+  var btn=document.getElementById('pdRewriteBtn');
+  var box=document.getElementById('pdRewrite');
+  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可处理';return;}
+  // Walk newest→oldest, find first consult that has an S section
+  var latest=null,sText='';
+  for(var i=0;i<currentHistory.length;i++){
+    var s=extractS(currentHistory[i].body||'');
+    if(s){latest=currentHistory[i];sText=s;break;}
+  }
+  if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
+  var key=getKey();if(!key)return;
+  btn.disabled=true;btn.textContent='生成中...';
+  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在润色每一句...</div>';
+  var sysPrompt='你是兽医病历的英文润色助手。任务：把给定的 S（Subjective）段落，**逐句**给出润色建议，让句子更清晰、简洁、医学专业，但**不准编造任何新的临床事实**。\n'
+    +'规则：\n'
+    +'1. **绝对不准**修改/添加/删除任何医学事实、症状、用药名、剂量、缩写、人名、宠物名。\n'
+    +'2. 只在表达层面优化（语法、措辞、结构）。如果一句话已经清楚到位，不要建议改它。\n'
+    +'3. 兽医缩写保持原样：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, BID, TID, SID, PRN, PO, SQ, IM, IV.\n'
+    +'4. 同样的输入必须永远返回同样的结果。\n'
+    +'5. 输出必须是纯 JSON：\n'
+    +'{"suggestions":[{"original":"完整原句","rewritten":"润色后的完整句","reason":"为什么这样改（一句话）"}]}\n'
+    +'6. 如果没有任何句子值得改，返回 {"suggestions":[]}。\n'
+    +'7. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
+  try{
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
+    });
+    var data=await res.json();
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+    reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
+    var parsed;
+    try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
+    renderRewriteSuggestions(parsed,sText,latest);
+  }catch(e){
+    box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+  }
+  btn.disabled=false;btn.textContent='生成建议';
+}
+function renderRewriteSuggestions(parsed,originalS,consult){
+  var box=document.getElementById('pdRewrite');
+  var sugs=(parsed.suggestions||[]).filter(function(s){return s.original&&s.rewritten&&s.original!==s.rewritten;});
+  if(!sugs.length){box.className='pd-empty';box.textContent='✓ 没有需要润色的地方';return;}
+  // Persistent state per current modal session
+  window._pendingRewrite={pid:currentPatient&&currentPatient.patient_id,consult_id:consult.consult_id||'',original_s:originalS,suggestions:sugs,decisions:sugs.map(function(){return null;})}; // null=undecided, true=approved, false=skipped
+  drawRewriteList();
+}
+function drawRewriteList(){
+  var p=window._pendingRewrite;if(!p)return;
+  var box=document.getElementById('pdRewrite');
+  var html='<div style="font-size:11.5px;color:#666;margin-bottom:8px">逐条决定，最后点"应用并保存"。</div>';
+  html+=p.suggestions.map(function(s,i){
+    var d=p.decisions[i];
+    var cls='pd-rw-item'+(d===true?' done-yes':d===false?' done-no':'');
+    var ctrl=d===null
+      ? '<div class="pd-rw-row"><button class="pd-rw-yes" onclick="decideRw('+i+',true)">✓ Approve</button><button class="pd-rw-no" onclick="decideRw('+i+',false)">✗ Skip</button></div>'
+      : '<div style="font-size:11px;color:#555;margin-top:4px">'+(d?'✓ 已批准':'✗ 已跳过')+' <a href="javascript:void(0)" onclick="decideRw('+i+',null)" style="color:#2563EB;margin-left:8px">改主意</a></div>';
+    return '<div class="'+cls+'">'
+      +'<span class="pd-rw-old">'+esc(s.original)+'</span>'
+      +'<span class="pd-rw-new">'+esc(s.rewritten)+'</span>'
+      +(s.reason?'<div class="pd-rw-why">💡 '+esc(s.reason)+'</div>':'')
+      +ctrl
+      +'</div>';
+  }).join('');
+  var approvedCount=p.decisions.filter(function(d){return d===true;}).length;
+  var undecided=p.decisions.filter(function(d){return d===null;}).length;
+  html+='<div class="pd-rw-foot">'
+    +'<button class="pd-c-no" onclick="cancelRewrite()">取消</button>'
+    +'<button class="pd-rw-save" '+(approvedCount?'':'disabled')+' onclick="applyRewrite()">应用并保存 ('+approvedCount+(undecided?' / 还有 '+undecided+' 未决定':'')+')</button>'
+    +'</div>';
+  box.className='';box.innerHTML=html;
+}
+function decideRw(i,val){var p=window._pendingRewrite;if(!p)return;p.decisions[i]=val;drawRewriteList();}
+function cancelRewrite(){var box=document.getElementById('pdRewrite');box.className='pd-empty';box.textContent='已取消';window._pendingRewrite=null;}
+async function applyRewrite(){
+  var p=window._pendingRewrite;if(!p)return;
+  // Build {original→corrected} pairs from approved suggestions; reuse the
+  // existing spell-fix endpoint which does word-boundary replacement, but
+  // here we replace the FULL sentence string.
+  var corrections=[];
+  for(var i=0;i<p.suggestions.length;i++){
+    if(p.decisions[i]===true){
+      corrections.push({original:p.suggestions[i].original,corrected:p.suggestions[i].rewritten,context:''});
+    }
+  }
+  if(!corrections.length){return;}
+  var box=document.getElementById('pdRewrite');
+  box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> 正在保存到 IDEXX Neo...</div>';
+  try{
+    var res=await fetch('https://ai-studio-swo7.onrender.com/api/neo-consult-update-s',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pid:p.pid,consult_id:p.consult_id,original_s:p.original_s,corrected_s:'',corrections:corrections})
+    });
+    var data=await res.json();
+    if(data.ok){
+      box.className='';
+      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo（已应用 '+corrections.length+' 条），正在刷新...</div>';
+      if(currentPatient&&currentPatient.patient_id){
+        try{
+          var rr=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+          var rd=await rr.json();
+          if(rd&&rd.consults){currentHistory=rd.consults;}
+        }catch(_){}
+      }
+      box.innerHTML='<div style="color:#065F46;font-size:12.5px;font-weight:700;text-align:center;padding:8px">✓ 已保存到 Neo（已刷新）</div>';
+    }else{
+      box.innerHTML='<div class="pd-empty">⚠ 保存失败：'+esc(data.message||'未知错误')+(data.diagnostic?'<pre style="text-align:left;white-space:pre-wrap;font-size:10px;color:#666;margin-top:6px">'+esc(JSON.stringify(data.diagnostic,null,2).slice(0,800))+'</pre>':'')+'</div>';
+    }
+  }catch(e){
+    box.innerHTML='<div class="pd-empty">⚠ 保存请求失败：'+esc(e.message||'')+'</div>';
+  }
+  window._pendingRewrite=null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Doctor briefing — one connected paragraph synthesizing latest S +
+//  patient signalment + meds + brief past history.
+// ─────────────────────────────────────────────────────────────────────────
+async function genBriefing(){
+  var btn=document.getElementById('pdBriefBtn');
+  var box=document.getElementById('pdBrief');
+  if(!currentPatient){box.className='pd-empty';box.textContent='先选一只病患';return;}
+  var key=getKey();if(!key)return;
+  // Pull latest consult's S (if any) for emphasis
+  var latestS='',latestHeader='';
+  if(currentHistory&&currentHistory.length){
+    for(var i=0;i<currentHistory.length;i++){
+      var s=extractS(currentHistory[i].body||'');
+      if(s){latestS=s;latestHeader=currentHistory[i].header||'';break;}
+    }
+  }
+  // Build context bundle
+  var ctx={
+    patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
+    today_reason:currentPatient.notes||'',
+    latest_visit_header:latestHeader,
+    latest_visit_S:latestS,
+    current_meds:(currentMeds||[]).slice(0,10).map(function(m){return {name:m.name,instructions:m.instructions||''};}),
+    past_visits:(currentHistory||[]).slice(0,5).map(function(c){return {header:c.header,title:c.title};})
+  };
+  btn.disabled=true;btn.textContent='生成中...';
+  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
+  var sysPrompt='你是兽医技师。请综合给出的全部信息，给主诊医生写一段**口语化、连贯的中文 briefing**（一段话，不要项目符号、不要小标题）。\n'
+    +'要求：\n'
+    +'1. 长度 80-160 字。\n'
+    +'2. 重点放在最新一次就诊的 S 部分（也就是技师/护士今天问诊得到的主观信息）。\n'
+    +'3. 自然带出：病患基本信息（名字、品种、年龄、体重）、今天来的原因、相关既往（如果有）、目前在吃的药（如果有）。\n'
+    +'4. 不要重复 SOAP 结构，写得像一个技师当面口头汇报给医生那样。\n'
+    +'5. 不要编造任何信息。如果某项没数据，就别提。\n'
+    +'6. 直接输出那段话，不要 JSON、不要 Markdown 代码块、不要前缀"Briefing："。';
+  try{
+    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0.2,messages:[{role:'system',content:sysPrompt},{role:'user',content:JSON.stringify(ctx)}]})
+    });
+    var data=await res.json();
+    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+    reply=reply.replace(/^```[a-z]*\s*|\s*```$/g,'').trim();
+    box.className='';
+    box.innerHTML='<div class="pd-brief-text" id="pdBriefText">'+esc(reply)+'</div>'
+      +'<div class="pd-brief-row"><button onclick="copyBrief()">📋 复制</button><button onclick="genBriefing()" style="background:#6B7280">↻ 重新生成</button></div>';
+  }catch(e){
+    box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+  }
+  btn.disabled=false;btn.textContent='生成 Briefing';
+}
+function copyBrief(){
+  var el=document.getElementById('pdBriefText');if(!el)return;
+  var t=el.textContent||'';
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);}
+  else{var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}
+  var btns=document.querySelectorAll('.pd-brief-row button');if(btns[0]){var orig=btns[0].textContent;btns[0].textContent='✓ 已复制';setTimeout(function(){btns[0].textContent=orig;},1500);}
 }
 
 // ESC to close modal
