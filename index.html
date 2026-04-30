@@ -675,7 +675,14 @@ function extractS(body){
   // Match S section: from "S = Subjective" header to next O/A/P header (or end)
   if(!body)return '';
   var m=body.match(/S\s*=\s*Subjective[^\n]*\n([\s\S]*?)(?=\n\s*[OAP]\s*=\s*(?:Objective|Assessment|Plan)|$)/i);
-  return m?m[1].trim():'';
+  if(m)return m[1].trim();
+  // Fallback: not SOAP-structured (e.g. plain free-text appointment notes).
+  // Treat the whole body as the subjective text so spell-check/rewrite/briefing still work.
+  // Skip clearly empty / header-only consults (just "DD-Mon YYYY at HH:MM..." lines).
+  var t=body.trim();
+  if(!t)return '';
+  if(/^\d{1,2}-[A-Za-z]{3}\s+\d{4}[\s\S]{0,80}DVM\s*$/i.test(t))return '';
+  return t;
 }
 // Force-refresh patient history from Neo (bypass any cache).
 // Called by the three "act on latest S" buttons so users get TODAY's just-saved
