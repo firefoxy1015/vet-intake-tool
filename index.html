@@ -122,6 +122,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pd-rw-save:disabled{background:#aaa;cursor:not-allowed}
 /* ── Briefing ── */
 .pd-brief-text{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:11px;font-size:12.5px;line-height:1.7;color:#0c4a6e;white-space:pre-wrap}
+.pd-brief-block{margin-bottom:10px}
+.pd-brief-label{font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;letter-spacing:.3px}
+.pd-brief-orig{background:#FEF9C3;border-color:#FDE68A;color:#713F12;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 .pd-brief-row{display:flex;gap:8px;margin-top:8px}
 .pd-brief-row button{flex:1;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;background:#0EA5E9;color:#fff}
 
@@ -990,18 +993,18 @@ async function genBriefing(){
     };
     btn.textContent='生成中...';
     box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
-    var sysPrompt='你是兽医技师，要给主诊医生做口头 briefing。**双语输出**：先一段中文，空一行，再一段英文，**两段内容必须对应**。\n\n'
+    var sysPrompt='你是兽医技师，要给主诊医生做口头 briefing。**输出两段总结**（中文 + English），不要包含原文。\n\n'
       +'**两段都严格按这个顺序写**：\n'
       +'1. 开头先说病患信息：名字、年纪、性别代码（M=未绝育公，F=未绝育母，MN=绝育公，FS=绝育母）、品种。例如：中文 "Caramel 是只 2岁7个月的 FS Domestic Shorthair"，英文 "Caramel is a 2y7mo FS Domestic Shorthair"。\n'
       +'2. 紧接着说**今天的主诉**（today_reason / chief complaint）。\n'
       +'3. 然后说**和主诉密切相关的内容**——包括相关既往（past_visits 里跟今天主诉有关的）、相关用药史（current_meds + 过去开过的药里跟主诉有关的）。如果都没相关的就跳过这步，**不要硬凑**。\n'
       +'4. 最后总结**最新一次 S 部分里其他还没提到的关键信息**（饮食/排便/精神/家里其他动物等）。\n\n'
-      +'**输出格式**（严格遵守）：\n'
-      +'【中文】\n'
-      +'<中文 briefing 一段话>\n'
+      +'**输出格式**（严格遵守，两个标记必须一字不差）：\n'
+      +'【中文总结】\n'
+      +'<中文一段话>\n'
       +'\n'
-      +'【English】\n'
-      +'<English briefing one paragraph>\n\n'
+      +'【English Summary】\n'
+      +'<English one paragraph>\n\n'
       +'**铁律**：\n'
       +'- 只能用提供的事实，绝对不能编造。\n'
       +'- 没有的信息直接跳过，不要写"未提及"或"no relevant history"这种废话。\n'
@@ -1017,9 +1020,26 @@ async function genBriefing(){
       var data=await res.json();
       var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
       reply=reply.replace(/^```[a-z]*\s*|\s*```$/g,'').trim();
+      // Split AI output into Chinese + English summary blocks.
+      var zh='',en='';
+      var mZh=reply.match(/【中文总结】\s*([\s\S]*?)(?=【English Summary】|$)/);
+      var mEn=reply.match(/【English Summary】\s*([\s\S]*)$/);
+      zh=(mZh?mZh[1]:'').trim();
+      en=(mEn?mEn[1]:'').trim();
+      if(!zh&&!en){zh=reply;}  // fallback if AI ignored format
       box.className='';
-      box.innerHTML='<div class="pd-brief-text" id="pdBriefText">'+esc(reply)+'</div>'
-        +'<div class="pd-brief-row"><button onclick="copyBrief()">📋 复制</button><button onclick="genBriefing()" style="background:#6B7280">↻ 重新生成</button></div>';
+      box.innerHTML=
+        '<div class="pd-brief-block"><div class="pd-brief-label">📄 原文（最新 S）</div>'
+          +'<div class="pd-brief-text pd-brief-orig" id="pdBriefOrig">'+esc(latestS||'(没有可用的 S 段)')+'</div></div>'
+        +'<div class="pd-brief-block"><div class="pd-brief-label">🇨🇳 中文总结</div>'
+          +'<div class="pd-brief-text" id="pdBriefZh">'+esc(zh)+'</div></div>'
+        +'<div class="pd-brief-block"><div class="pd-brief-label">🇺🇸 English Summary</div>'
+          +'<div class="pd-brief-text" id="pdBriefEn">'+esc(en)+'</div></div>'
+        +'<div class="pd-brief-row">'
+          +'<button onclick="copyBrief(\'pdBriefZh\')">📋 复制中文</button>'
+          +'<button onclick="copyBrief(\'pdBriefEn\')">📋 Copy English</button>'
+          +'<button onclick="genBriefing()" style="background:#6B7280">↻ 重新生成</button>'
+        +'</div>';
     }catch(e){
       box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
     }
@@ -1027,12 +1047,21 @@ async function genBriefing(){
     btn.disabled=false;btn.textContent=ORIG;
   }
 }
-function copyBrief(){
-  var el=document.getElementById('pdBriefText');if(!el)return;
+function copyBrief(targetId){
+  var el=document.getElementById(targetId||'pdBriefZh');if(!el)return;
   var t=el.textContent||'';
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);}
   else{var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}
-  var btns=document.querySelectorAll('.pd-brief-row button');if(btns[0]){var orig=btns[0].textContent;btns[0].textContent='✓ 已复制';setTimeout(function(){btns[0].textContent=orig;},1500);}
+  // Find the clicked button (its onclick references targetId) and flash "已复制"
+  var btns=document.querySelectorAll('.pd-brief-row button');
+  for(var i=0;i<btns.length;i++){
+    var oc=btns[i].getAttribute('onclick')||'';
+    if(oc.indexOf(targetId||'pdBriefZh')>=0){
+      var orig=btns[i].textContent;btns[i].textContent='✓ 已复制';
+      setTimeout(function(b,o){return function(){b.textContent=o;};}(btns[i],orig),1500);
+      break;
+    }
+  }
 }
 
 // ESC to close modal
