@@ -696,14 +696,21 @@ async function refreshHistoryNow(statusBox){
   var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
   var to=setTimeout(function(){if(ctrl)ctrl.abort();},25000);
   try{
-    var opts=ctrl?{signal:ctrl.signal}:{};
-    var r=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true',opts);
+    var opts={cache:'no-store'};
+    if(ctrl)opts.signal=ctrl.signal;
+    var url=NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true&_='+Date.now();
+    console.log('[refresh] GET',url);
+    var r=await fetch(url,opts);
+    console.log('[refresh] HTTP',r.status,'in',((Date.now()-t0)/1000).toFixed(2)+'s');
+    if(!r.ok)throw new Error('HTTP '+r.status);
     var d=await r.json();
+    console.log('[refresh] consults=',(d&&d.consults||[]).length,'meds=',(d&&d.medications||[]).length);
     if(d&&d.consults){currentHistory=d.consults;}
     if(d&&d.medications){currentMeds=d.medications;}
     return true;
   }catch(e){
-    var msg=(e&&e.name==='AbortError')?'Neo 拉取超时（25s）— 服务器可能忙，稍等再试':(e.message||'');
+    console.error('[refresh] failed',e);
+    var msg=(e&&e.name==='AbortError')?'Neo 拉取超时（25s）— 服务器可能忙，稍等再试':(e.message||'网络错误');
     if(statusBox){statusBox.innerHTML='<div class="pd-empty">⚠ '+esc(msg)+'</div>';}
     return false;
   }finally{
@@ -714,47 +721,48 @@ async function refreshHistoryNow(statusBox){
 async function spellCheck(){
   var btn=document.getElementById('pdSpellBtn');
   var box=document.getElementById('pdSpell');
-  // ALWAYS pull the latest consults first, so the just-saved exam shows up
+  var ORIG='检查最新S部分';
   btn.disabled=true;btn.textContent='刷新中...';
-  await refreshHistoryNow(box);
-  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';btn.disabled=false;btn.textContent='检查最新S部分';return;}
-  // Walk from newest to oldest, take the first consult that has an S section
-  var latest=null,sText='';
-  for(var i=0;i<currentHistory.length;i++){
-    var s=extractS(currentHistory[i].body||'');
-    if(s){latest=currentHistory[i];sText=s;break;}
-  }
-  if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
-  var key=getKey();if(!key)return;
-  btn.disabled=true;btn.textContent='检查中...';
-  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在查找拼写错误...</div>';
-  var sysPrompt='你是兽医病历的英文拼写检查助手。规则（按优先级）：\n'
-    +'1. 只修正**确凿无疑的英文拼写错误**（typo / misspelled word）。如果不确定，绝对不改。\n'
-    +'2. **不准**改语法、时态、单复数、语序、用词、大小写、标点、空格、换行。\n'
-    +'3. **不准**修改任何兽医术语和缩写，包括但不限于：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, OS, OD, OU, AU, AD, AS, BID, TID, SID, PRN, PO, SQ, IM, IV, q4h, q12h.\n'
-    +'4. **不准**修改人名、药名、品牌名、首字母缩写。\n'
-    +'5. 同样的输入必须**永远返回同样的结果**。如果一个词你某次会改、某次不会改，那就**永远不要改它**。\n'
-    +'6. 输出必须是纯 JSON：\n'
-    +'{"corrections":[{"original":"原词","corrected":"修正后","context":"前后5-10个词的上下文片段"}],"corrected_full":"完整修正后文本"}\n'
-    +'7. 如果没有任何拼写错误，返回 {"corrections":[],"corrected_full":"原文"}。\n'
-    +'8. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
   try{
-    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
-    });
-    var data=await res.json();
-    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
-    // strip markdown fences if any
-    reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
-    var parsed;
-    try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
-    renderSpellPreview(parsed,sText,latest);
-  }catch(e){
-    box.innerHTML='<div class="pd-empty">⚠ 检查失败：'+esc(e.message||'网络错误')+'</div>';
+    await refreshHistoryNow(box);
+    if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';return;}
+    var latest=null,sText='';
+    for(var i=0;i<currentHistory.length;i++){
+      var s=extractS(currentHistory[i].body||'');
+      if(s){latest=currentHistory[i];sText=s;break;}
+    }
+    if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
+    var key=getKey();if(!key)return;
+    btn.textContent='检查中...';
+    box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在查找拼写错误...</div>';
+    var sysPrompt='你是兽医病历的英文拼写检查助手。规则（按优先级）：\n'
+      +'1. 只修正**确凿无疑的英文拼写错误**（typo / misspelled word）。如果不确定，绝对不改。\n'
+      +'2. **不准**改语法、时态、单复数、语序、用词、大小写、标点、空格、换行。\n'
+      +'3. **不准**修改任何兽医术语和缩写，包括但不限于：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, OS, OD, OU, AU, AD, AS, BID, TID, SID, PRN, PO, SQ, IM, IV, q4h, q12h.\n'
+      +'4. **不准**修改人名、药名、品牌名、首字母缩写。\n'
+      +'5. 同样的输入必须**永远返回同样的结果**。如果一个词你某次会改、某次不会改，那就**永远不要改它**。\n'
+      +'6. 输出必须是纯 JSON：\n'
+      +'{"corrections":[{"original":"原词","corrected":"修正后","context":"前后5-10个词的上下文片段"}],"corrected_full":"完整修正后文本"}\n'
+      +'7. 如果没有任何拼写错误，返回 {"corrections":[],"corrected_full":"原文"}。\n'
+      +'8. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
+    try{
+      var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
+      });
+      var data=await res.json();
+      var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+      reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
+      var parsed;
+      try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
+      renderSpellPreview(parsed,sText,latest);
+    }catch(e){
+      box.innerHTML='<div class="pd-empty">⚠ 检查失败：'+esc(e.message||'网络错误')+'</div>';
+    }
+  }finally{
+    btn.disabled=false;btn.textContent=ORIG;
   }
-  btn.disabled=false;btn.textContent='检查最新S部分';
 }
 function renderSpellPreview(parsed,originalS,consult){
   var box=document.getElementById('pdSpell');
@@ -823,46 +831,48 @@ async function applySpell(){
 async function rewriteSuggest(){
   var btn=document.getElementById('pdRewriteBtn');
   var box=document.getElementById('pdRewrite');
-  // Pull the latest consults first so the just-saved exam is included
+  var ORIG='生成建议';
   btn.disabled=true;btn.textContent='刷新中...';
-  await refreshHistoryNow(box);
-  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可处理';btn.disabled=false;btn.textContent='生成建议';return;}
-  // Walk newest→oldest, find first consult that has an S section
-  var latest=null,sText='';
-  for(var i=0;i<currentHistory.length;i++){
-    var s=extractS(currentHistory[i].body||'');
-    if(s){latest=currentHistory[i];sText=s;break;}
-  }
-  if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
-  var key=getKey();if(!key)return;
-  btn.disabled=true;btn.textContent='生成中...';
-  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在润色每一句...</div>';
-  var sysPrompt='你是兽医病历的英文润色助手。任务：把给定的 S（Subjective）段落，**逐句**给出润色建议，让句子更清晰、简洁、医学专业，但**不准编造任何新的临床事实**。\n'
-    +'规则：\n'
-    +'1. **绝对不准**修改/添加/删除任何医学事实、症状、用药名、剂量、缩写、人名、宠物名。\n'
-    +'2. 只在表达层面优化（语法、措辞、结构）。如果一句话已经清楚到位，不要建议改它。\n'
-    +'3. 兽医缩写保持原样：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, BID, TID, SID, PRN, PO, SQ, IM, IV.\n'
-    +'4. 同样的输入必须永远返回同样的结果。\n'
-    +'5. 输出必须是纯 JSON：\n'
-    +'{"suggestions":[{"original":"完整原句","rewritten":"润色后的完整句","reason":"为什么这样改（一句话）"}]}\n'
-    +'6. 如果没有任何句子值得改，返回 {"suggestions":[]}。\n'
-    +'7. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
   try{
-    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
-    });
-    var data=await res.json();
-    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
-    reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
-    var parsed;
-    try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
-    renderRewriteSuggestions(parsed,sText,latest);
-  }catch(e){
-    box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+    await refreshHistoryNow(box);
+    if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可处理';return;}
+    var latest=null,sText='';
+    for(var i=0;i<currentHistory.length;i++){
+      var s=extractS(currentHistory[i].body||'');
+      if(s){latest=currentHistory[i];sText=s;break;}
+    }
+    if(!latest){box.className='pd-empty';box.textContent='最近所有就诊都没有 S（Subjective）部分';return;}
+    var key=getKey();if(!key)return;
+    btn.textContent='生成中...';
+    box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在润色每一句...</div>';
+    var sysPrompt='你是兽医病历的英文润色助手。任务：把给定的 S（Subjective）段落，**逐句**给出润色建议，让句子更清晰、简洁、医学专业，但**不准编造任何新的临床事实**。\n'
+      +'规则：\n'
+      +'1. **绝对不准**修改/添加/删除任何医学事实、症状、用药名、剂量、缩写、人名、宠物名。\n'
+      +'2. 只在表达层面优化（语法、措辞、结构）。如果一句话已经清楚到位，不要建议改它。\n'
+      +'3. 兽医缩写保持原样：DUD, EDUD, VSCD, VCS, BAR, QAR, NSF, MM, CRT, BCS, PE, Hx, Tx, Dx, Rx, SP, CP, JZ, MH, CBC, TT4, RBC, COHAT, BW, CRP, GI, URI, BID, TID, SID, PRN, PO, SQ, IM, IV.\n'
+      +'4. 同样的输入必须永远返回同样的结果。\n'
+      +'5. 输出必须是纯 JSON：\n'
+      +'{"suggestions":[{"original":"完整原句","rewritten":"润色后的完整句","reason":"为什么这样改（一句话）"}]}\n'
+      +'6. 如果没有任何句子值得改，返回 {"suggestions":[]}。\n'
+      +'7. 只返回 JSON，不要任何额外说明、不要 Markdown 代码块。';
+    try{
+      var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:'gpt-5.4-mini',temperature:0,top_p:1,seed:42,messages:[{role:'system',content:sysPrompt},{role:'user',content:sText}]})
+      });
+      var data=await res.json();
+      var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+      reply=reply.replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
+      var parsed;
+      try{parsed=JSON.parse(reply);}catch(e){throw new Error('AI 返回格式异常：'+reply.slice(0,200));}
+      renderRewriteSuggestions(parsed,sText,latest);
+    }catch(e){
+      box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+    }
+  }finally{
+    btn.disabled=false;btn.textContent=ORIG;
   }
-  btn.disabled=false;btn.textContent='生成建议';
 }
 function renderRewriteSuggestions(parsed,originalS,consult){
   var box=document.getElementById('pdRewrite');
@@ -947,54 +957,55 @@ async function applyRewrite(){
 async function genBriefing(){
   var btn=document.getElementById('pdBriefBtn');
   var box=document.getElementById('pdBrief');
+  var ORIG='生成 Briefing';
   if(!currentPatient){box.className='pd-empty';box.textContent='先选一只病患';return;}
   var key=getKey();if(!key)return;
-  // Pull the latest consults first so the just-saved exam is included
   btn.disabled=true;btn.textContent='刷新中...';
-  await refreshHistoryNow(box);
-  // Pull latest consult's S (if any) for emphasis
-  var latestS='',latestHeader='';
-  if(currentHistory&&currentHistory.length){
-    for(var i=0;i<currentHistory.length;i++){
-      var s=extractS(currentHistory[i].body||'');
-      if(s){latestS=s;latestHeader=currentHistory[i].header||'';break;}
-    }
-  }
-  // Build context bundle
-  var ctx={
-    patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
-    today_reason:currentPatient.notes||'',
-    latest_visit_header:latestHeader,
-    latest_visit_S:latestS,
-    current_meds:(currentMeds||[]).slice(0,10).map(function(m){return {name:m.name,instructions:m.instructions||''};}),
-    past_visits:(currentHistory||[]).slice(0,5).map(function(c){return {header:c.header,title:c.title};})
-  };
-  btn.disabled=true;btn.textContent='生成中...';
-  box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
-  var sysPrompt='你是兽医技师。请综合给出的全部信息，给主诊医生写一段**口语化、连贯的中文 briefing**（一段话，不要项目符号、不要小标题）。\n'
-    +'要求：\n'
-    +'1. 长度 80-160 字。\n'
-    +'2. 重点放在最新一次就诊的 S 部分（也就是技师/护士今天问诊得到的主观信息）。\n'
-    +'3. 自然带出：病患基本信息（名字、品种、年龄、体重）、今天来的原因、相关既往（如果有）、目前在吃的药（如果有）。\n'
-    +'4. 不要重复 SOAP 结构，写得像一个技师当面口头汇报给医生那样。\n'
-    +'5. 不要编造任何信息。如果某项没数据，就别提。\n'
-    +'6. 直接输出那段话，不要 JSON、不要 Markdown 代码块、不要前缀"Briefing："。';
   try{
-    var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({model:'gpt-5.4-mini',temperature:0.2,messages:[{role:'system',content:sysPrompt},{role:'user',content:JSON.stringify(ctx)}]})
-    });
-    var data=await res.json();
-    var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
-    reply=reply.replace(/^```[a-z]*\s*|\s*```$/g,'').trim();
-    box.className='';
-    box.innerHTML='<div class="pd-brief-text" id="pdBriefText">'+esc(reply)+'</div>'
-      +'<div class="pd-brief-row"><button onclick="copyBrief()">📋 复制</button><button onclick="genBriefing()" style="background:#6B7280">↻ 重新生成</button></div>';
-  }catch(e){
-    box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+    await refreshHistoryNow(box);
+    var latestS='',latestHeader='';
+    if(currentHistory&&currentHistory.length){
+      for(var i=0;i<currentHistory.length;i++){
+        var s=extractS(currentHistory[i].body||'');
+        if(s){latestS=s;latestHeader=currentHistory[i].header||'';break;}
+      }
+    }
+    var ctx={
+      patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
+      today_reason:currentPatient.notes||'',
+      latest_visit_header:latestHeader,
+      latest_visit_S:latestS,
+      current_meds:(currentMeds||[]).slice(0,10).map(function(m){return {name:m.name,instructions:m.instructions||''};}),
+      past_visits:(currentHistory||[]).slice(0,5).map(function(c){return {header:c.header,title:c.title};})
+    };
+    btn.textContent='生成中...';
+    box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
+    var sysPrompt='你是兽医技师。请综合给出的全部信息，给主诊医生写一段**口语化、连贯的中文 briefing**（一段话，不要项目符号、不要小标题）。\n'
+      +'要求：\n'
+      +'1. 长度 80-160 字。\n'
+      +'2. 重点放在最新一次就诊的 S 部分（也就是技师/护士今天问诊得到的主观信息）。\n'
+      +'3. 自然带出：病患基本信息（名字、品种、年龄、体重）、今天来的原因、相关既往（如果有）、目前在吃的药（如果有）。\n'
+      +'4. 不要重复 SOAP 结构，写得像一个技师当面口头汇报给医生那样。\n'
+      +'5. 不要编造任何信息。如果某项没数据，就别提。\n'
+      +'6. 直接输出那段话，不要 JSON、不要 Markdown 代码块、不要前缀"Briefing："。';
+    try{
+      var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:'gpt-5.4-mini',temperature:0.2,messages:[{role:'system',content:sysPrompt},{role:'user',content:JSON.stringify(ctx)}]})
+      });
+      var data=await res.json();
+      var reply=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||'';
+      reply=reply.replace(/^```[a-z]*\s*|\s*```$/g,'').trim();
+      box.className='';
+      box.innerHTML='<div class="pd-brief-text" id="pdBriefText">'+esc(reply)+'</div>'
+        +'<div class="pd-brief-row"><button onclick="copyBrief()">📋 复制</button><button onclick="genBriefing()" style="background:#6B7280">↻ 重新生成</button></div>';
+    }catch(e){
+      box.innerHTML='<div class="pd-empty">⚠ 生成失败：'+esc(e.message||'网络错误')+'</div>';
+    }
+  }finally{
+    btn.disabled=false;btn.textContent=ORIG;
   }
-  btn.disabled=false;btn.textContent='生成 Briefing';
 }
 function copyBrief(){
   var el=document.getElementById('pdBriefText');if(!el)return;
