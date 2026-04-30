@@ -888,13 +888,15 @@ function renderRewriteSuggestions(parsed,originalS,consult){
 function drawRewriteList(){
   var p=window._pendingRewrite;if(!p)return;
   var box=document.getElementById('pdRewrite');
-  var html='<div style="font-size:11.5px;color:#666;margin-bottom:8px">逐条决定，最后点"应用并保存"。</div>';
+  var html='<div style="font-size:11.5px;color:#666;margin-bottom:8px">点 Approve 选要应用的；不点的默认 Skip。</div>';
   html+=p.suggestions.map(function(s,i){
     var d=p.decisions[i];
-    var cls='pd-rw-item'+(d===true?' done-yes':d===false?' done-no':'');
-    var ctrl=d===null
-      ? '<div class="pd-rw-row"><button class="pd-rw-yes" onclick="decideRw('+i+',true)">✓ Approve</button><button class="pd-rw-no" onclick="decideRw('+i+',false)">✗ Skip</button></div>'
-      : '<div style="font-size:11px;color:#555;margin-top:4px">'+(d?'✓ 已批准':'✗ 已跳过')+' <a href="javascript:void(0)" onclick="decideRw('+i+',null)" style="color:#2563EB;margin-left:8px">改主意</a></div>';
+    // null/false → both treated as Skip; true → Approved
+    var approved=(d===true);
+    var cls='pd-rw-item'+(approved?' done-yes':' done-no');
+    var ctrl=approved
+      ? '<div style="font-size:11px;color:#166534;margin-top:4px">✓ 已批准 <a href="javascript:void(0)" onclick="decideRw('+i+',false)" style="color:#2563EB;margin-left:8px">取消</a></div>'
+      : '<div class="pd-rw-row"><button class="pd-rw-yes" onclick="decideRw('+i+',true)">✓ Approve</button><span style="flex:1;text-align:right;font-size:11px;color:#999;align-self:center">默认 Skip</span></div>';
     return '<div class="'+cls+'">'
       +'<span class="pd-rw-old">'+esc(s.original)+'</span>'
       +'<span class="pd-rw-new">'+esc(s.rewritten)+'</span>'
@@ -903,10 +905,9 @@ function drawRewriteList(){
       +'</div>';
   }).join('');
   var approvedCount=p.decisions.filter(function(d){return d===true;}).length;
-  var undecided=p.decisions.filter(function(d){return d===null;}).length;
   html+='<div class="pd-rw-foot">'
     +'<button class="pd-c-no" onclick="cancelRewrite()">取消</button>'
-    +'<button class="pd-rw-save" '+(approvedCount?'':'disabled')+' onclick="applyRewrite()">应用并保存 ('+approvedCount+(undecided?' / 还有 '+undecided+' 未决定':'')+')</button>'
+    +'<button class="pd-rw-save" '+(approvedCount?'':'disabled')+' onclick="applyRewrite()">应用并保存 ('+approvedCount+' 条已批准)</button>'
     +'</div>';
   box.className='';box.innerHTML=html;
 }
