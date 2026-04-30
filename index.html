@@ -970,24 +970,38 @@ async function genBriefing(){
         if(s){latestS=s;latestHeader=currentHistory[i].header||'';break;}
       }
     }
+    // Normalize sex to MN/FS/M/F shorthand the way doctors expect.
+    function sexCode(s){
+      if(!s)return '';
+      var t=String(s).toLowerCase();
+      if(/neuter/.test(t))return 'MN';
+      if(/spay/.test(t))return 'FS';
+      if(/female/.test(t))return 'F';
+      if(/\bmale\b/.test(t))return 'M';
+      return s;
+    }
     var ctx={
-      patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
+      patient:{name:currentPatient.patient,species:currentPatient.species,breed:currentPatient.breed,sex_code:sexCode(currentPatient.sex),sex_raw:currentPatient.sex,age:currentPatient.age,weight:currentPatient.weight},
       today_reason:currentPatient.notes||'',
       latest_visit_header:latestHeader,
       latest_visit_S:latestS,
-      current_meds:(currentMeds||[]).slice(0,10).map(function(m){return {name:m.name,instructions:m.instructions||''};}),
-      past_visits:(currentHistory||[]).slice(0,5).map(function(c){return {header:c.header,title:c.title};})
+      current_meds:(currentMeds||[]).slice(0,15).map(function(m){return {name:m.name,instructions:m.instructions||'',date:m.date||'',provider:m.provider||''};}),
+      past_visits:(currentHistory||[]).slice(0,8).map(function(c){return {header:c.header,title:c.title,body_excerpt:(c.body||'').slice(0,400)};})
     };
     btn.textContent='生成中...';
     box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
-    var sysPrompt='你是兽医技师。请综合给出的全部信息，给主诊医生写一段**口语化、连贯的中文 briefing**（一段话，不要项目符号、不要小标题）。\n'
-      +'要求：\n'
-      +'1. 长度 80-160 字。\n'
-      +'2. 重点放在最新一次就诊的 S 部分（也就是技师/护士今天问诊得到的主观信息）。\n'
-      +'3. 自然带出：病患基本信息（名字、品种、年龄、体重）、今天来的原因、相关既往（如果有）、目前在吃的药（如果有）。\n'
-      +'4. 不要重复 SOAP 结构，写得像一个技师当面口头汇报给医生那样。\n'
-      +'5. 不要编造任何信息。如果某项没数据，就别提。\n'
-      +'6. 直接输出那段话，不要 JSON、不要 Markdown 代码块、不要前缀"Briefing："。';
+    var sysPrompt='你是兽医技师，要给主诊医生做口头 briefing。输出**一段连贯的中文话**（不分行、不分点、不加小标题、不加前缀）。\n\n'
+      +'**严格按这个顺序写**：\n'
+      +'1. 开头先说病患信息：名字、品种、年纪、性别代码（M=未绝育公，F=未绝育母，MN=绝育公，FS=绝育母）。例如："Caramel 是只 2岁7个月的 FS Domestic Shorthair"。\n'
+      +'2. 紧接着说**今天的主诉**（today_reason / chief complaint）。\n'
+      +'3. 然后说**和主诉密切相关的内容**——包括相关既往（past_visits 里跟今天主诉有关的）、相关用药史（current_meds + 过去开过的药里跟主诉有关的）。如果都没相关的就跳过这步，**不要硬凑**。\n'
+      +'4. 最后总结**最新一次 S 部分里其他还没提到的关键信息**（饮食/排便/精神/家里其他动物等）。\n\n'
+      +'**铁律**：\n'
+      +'- 只能用提供的事实，绝对不能编造。\n'
+      +'- 没有的信息直接跳过，不要写"未提及"或"无相关用药"这种废话。\n'
+      +'- 性别代码必须用 M / F / MN / FS，不要写"绝育母猫"这种。\n'
+      +'- 长度 100-200 字。\n'
+      +'- 直接输出那段话，不要 JSON、不要 Markdown、不要前缀"Briefing："。';
     try{
       var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
         method:'POST',
