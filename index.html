@@ -677,10 +677,30 @@ function extractS(body){
   var m=body.match(/S\s*=\s*Subjective[^\n]*\n([\s\S]*?)(?=\n\s*[OAP]\s*=\s*(?:Objective|Assessment|Plan)|$)/i);
   return m?m[1].trim():'';
 }
+// Force-refresh patient history from Neo (bypass any cache).
+// Called by the three "act on latest S" buttons so users get TODAY's just-saved
+// consult without having to manually hit 刷新 elsewhere.
+async function refreshHistoryNow(statusBox){
+  if(!currentPatient||!currentPatient.patient_id)return false;
+  if(statusBox){statusBox.className='';statusBox.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> 正在从 Neo 拉取最新就诊...</div>';}
+  try{
+    var r=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+    var d=await r.json();
+    if(d&&d.consults){currentHistory=d.consults;}
+    if(d&&d.medications){currentMeds=d.medications;}
+    return true;
+  }catch(e){
+    if(statusBox){statusBox.innerHTML='<div class="pd-empty">⚠ 拉取最新就诊失败：'+esc(e.message||'')+'</div>';}
+    return false;
+  }
+}
 async function spellCheck(){
   var btn=document.getElementById('pdSpellBtn');
   var box=document.getElementById('pdSpell');
-  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';return;}
+  // ALWAYS pull the latest consults first, so the just-saved exam shows up
+  btn.disabled=true;btn.textContent='刷新中...';
+  await refreshHistoryNow(box);
+  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可检查';btn.disabled=false;btn.textContent='检查最新S部分';return;}
   // Walk from newest to oldest, take the first consult that has an S section
   var latest=null,sText='';
   for(var i=0;i<currentHistory.length;i++){
@@ -786,7 +806,10 @@ async function applySpell(){
 async function rewriteSuggest(){
   var btn=document.getElementById('pdRewriteBtn');
   var box=document.getElementById('pdRewrite');
-  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可处理';return;}
+  // Pull the latest consults first so the just-saved exam is included
+  btn.disabled=true;btn.textContent='刷新中...';
+  await refreshHistoryNow(box);
+  if(!currentHistory||!currentHistory.length){box.className='pd-empty';box.textContent='无既往就诊记录可处理';btn.disabled=false;btn.textContent='生成建议';return;}
   // Walk newest→oldest, find first consult that has an S section
   var latest=null,sText='';
   for(var i=0;i<currentHistory.length;i++){
@@ -909,6 +932,9 @@ async function genBriefing(){
   var box=document.getElementById('pdBrief');
   if(!currentPatient){box.className='pd-empty';box.textContent='先选一只病患';return;}
   var key=getKey();if(!key)return;
+  // Pull the latest consults first so the just-saved exam is included
+  btn.disabled=true;btn.textContent='刷新中...';
+  await refreshHistoryNow(box);
   // Pull latest consult's S (if any) for emphasis
   var latestS='',latestHeader='';
   if(currentHistory&&currentHistory.length){
