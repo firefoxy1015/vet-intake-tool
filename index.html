@@ -990,18 +990,24 @@ async function genBriefing(){
     };
     btn.textContent='生成中...';
     box.className='';box.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> AI 正在为医生整理 briefing...</div>';
-    var sysPrompt='你是兽医技师，要给主诊医生做口头 briefing。输出**一段连贯的中文话**（不分行、不分点、不加小标题、不加前缀）。\n\n'
-      +'**严格按这个顺序写**：\n'
-      +'1. 开头先说病患信息：名字、品种、年纪、性别代码（M=未绝育公，F=未绝育母，MN=绝育公，FS=绝育母）。例如："Caramel 是只 2岁7个月的 FS Domestic Shorthair"。\n'
+    var sysPrompt='你是兽医技师，要给主诊医生做口头 briefing。**双语输出**：先一段中文，空一行，再一段英文，**两段内容必须对应**。\n\n'
+      +'**两段都严格按这个顺序写**：\n'
+      +'1. 开头先说病患信息：名字、年纪、性别代码（M=未绝育公，F=未绝育母，MN=绝育公，FS=绝育母）、品种。例如：中文 "Caramel 是只 2岁7个月的 FS Domestic Shorthair"，英文 "Caramel is a 2y7mo FS Domestic Shorthair"。\n'
       +'2. 紧接着说**今天的主诉**（today_reason / chief complaint）。\n'
       +'3. 然后说**和主诉密切相关的内容**——包括相关既往（past_visits 里跟今天主诉有关的）、相关用药史（current_meds + 过去开过的药里跟主诉有关的）。如果都没相关的就跳过这步，**不要硬凑**。\n'
       +'4. 最后总结**最新一次 S 部分里其他还没提到的关键信息**（饮食/排便/精神/家里其他动物等）。\n\n'
+      +'**输出格式**（严格遵守）：\n'
+      +'【中文】\n'
+      +'<中文 briefing 一段话>\n'
+      +'\n'
+      +'【English】\n'
+      +'<English briefing one paragraph>\n\n'
       +'**铁律**：\n'
       +'- 只能用提供的事实，绝对不能编造。\n'
-      +'- 没有的信息直接跳过，不要写"未提及"或"无相关用药"这种废话。\n'
-      +'- 性别代码必须用 M / F / MN / FS，不要写"绝育母猫"这种。\n'
-      +'- 长度 100-200 字。\n'
-      +'- 直接输出那段话，不要 JSON、不要 Markdown、不要前缀"Briefing："。';
+      +'- 没有的信息直接跳过，不要写"未提及"或"no relevant history"这种废话。\n'
+      +'- 性别代码必须用 M / F / MN / FS，不要写"绝育母猫"或 "spayed female cat"。\n'
+      +'- 每段 100-200 字（英文 60-120 words）。\n'
+      +'- 不要 JSON、不要 Markdown 代码块、不要前缀 "Briefing："。';
     try{
       var res=await fetch('https://api.ai6700.com/v1/chat/completions',{
         method:'POST',
