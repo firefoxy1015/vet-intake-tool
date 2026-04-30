@@ -682,16 +682,33 @@ function extractS(body){
 // consult without having to manually hit 刷新 elsewhere.
 async function refreshHistoryNow(statusBox){
   if(!currentPatient||!currentPatient.patient_id)return false;
-  if(statusBox){statusBox.className='';statusBox.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> 正在从 Neo 拉取最新就诊...</div>';}
+  // Live elapsed-seconds counter so the user can see it's actually working
+  var t0=Date.now(),timer=null;
+  function tick(){
+    if(!statusBox)return;
+    var sec=((Date.now()-t0)/1000).toFixed(1);
+    statusBox.className='';
+    statusBox.innerHTML='<div class="pd-empty"><span class="pd-spin"></span> 正在从 Neo 拉取最新就诊... <b>'+sec+'s</b></div>';
+  }
+  tick();
+  if(statusBox)timer=setInterval(tick,150);
+  // 25-second hard timeout — abort instead of letting the user wait forever
+  var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  var to=setTimeout(function(){if(ctrl)ctrl.abort();},25000);
   try{
-    var r=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true');
+    var opts=ctrl?{signal:ctrl.signal}:{};
+    var r=await fetch(NEO_HISTORY_API+'?pid='+encodeURIComponent(currentPatient.patient_id)+'&refresh=true',opts);
     var d=await r.json();
     if(d&&d.consults){currentHistory=d.consults;}
     if(d&&d.medications){currentMeds=d.medications;}
     return true;
   }catch(e){
-    if(statusBox){statusBox.innerHTML='<div class="pd-empty">⚠ 拉取最新就诊失败：'+esc(e.message||'')+'</div>';}
+    var msg=(e&&e.name==='AbortError')?'Neo 拉取超时（25s）— 服务器可能忙，稍等再试':(e.message||'');
+    if(statusBox){statusBox.innerHTML='<div class="pd-empty">⚠ '+esc(msg)+'</div>';}
     return false;
+  }finally{
+    clearTimeout(to);
+    if(timer)clearInterval(timer);
   }
 }
 async function spellCheck(){
