@@ -179,17 +179,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div>
 <script>
+// Cookie helpers — 登录态完全保存在浏览器 cookie 里，服务器端不存任何东西。
+// 每个浏览器自己保管自己的登录态，30 天有效。
+var COOKIE_NAME='vetAuth_v1';
+function setAuthCookie(val,expiresTs){
+  var d=new Date(expiresTs*1000);
+  var attrs='; path=/; expires='+d.toUTCString()+'; SameSite=Lax';
+  if(location.protocol==='https:')attrs+='; Secure';
+  document.cookie=COOKIE_NAME+'='+encodeURIComponent(val)+attrs;
+}
+function getAuthCookie(){
+  var pairs=document.cookie?document.cookie.split(';'):[];
+  for(var i=0;i<pairs.length;i++){
+    var p=pairs[i].trim();
+    if(p.indexOf(COOKIE_NAME+'=')===0){
+      try{return decodeURIComponent(p.substring(COOKIE_NAME.length+1));}catch(_){return '';}
+    }
+  }
+  return '';
+}
+function clearAuthCookie(){
+  document.cookie=COOKIE_NAME+'=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+}
 (function(){
-  var KEY='vetAuth_v1';
-  var raw=null;try{raw=localStorage.getItem(KEY);}catch(_){}
+  // One-time migration: move any old localStorage token into a cookie, then wipe it.
+  try{
+    var legacy=localStorage.getItem('vetAuth_v1');
+    if(legacy){
+      try{
+        var lo=JSON.parse(legacy);
+        if(lo&&lo.expires&&lo.expires>Math.floor(Date.now()/1000)){
+          setAuthCookie(legacy,lo.expires);
+        }
+      }catch(_){}
+      localStorage.removeItem('vetAuth_v1');
+    }
+  }catch(_){}
+  var raw=getAuthCookie();
   if(raw){
     try{
       var obj=JSON.parse(raw);
       if(obj&&obj.expires&&obj.expires>Math.floor(Date.now()/1000)){
         var ov=document.getElementById('loginOverlay');if(ov)ov.classList.add('hidden');
         return;
+      }else{
+        clearAuthCookie();
       }
-    }catch(_){}
+    }catch(_){clearAuthCookie();}
   }
   // No valid token — overlay stays visible.
 })();
@@ -207,7 +243,7 @@ async function doLogin(ev){
     });
     var d=await r.json();
     if(d&&d.ok&&d.token){
-      try{localStorage.setItem('vetAuth_v1',JSON.stringify({token:d.token,expires:d.expires,user:u}));}catch(_){}
+      setAuthCookie(JSON.stringify({token:d.token,expires:d.expires,user:u}),d.expires);
       document.getElementById('loginOverlay').classList.add('hidden');
     }else{
       err.textContent=(d&&d.message)||'登录失败';
@@ -219,7 +255,7 @@ async function doLogin(ev){
   }
   return false;
 }
-function vetLogout(){try{localStorage.removeItem('vetAuth_v1');}catch(_){}location.reload();}
+function vetLogout(){clearAuthCookie();location.reload();}
 </script>
 <div class="wrap">
 <div class="topbar">
