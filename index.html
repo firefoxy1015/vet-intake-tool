@@ -738,7 +738,7 @@ async function loadPatientFiles(pid){
       var meta=[f.created||'',fmtSize(f.size),(f.mime||'').split(';')[0]].filter(Boolean).join(' · ');
       var label=f.title?(esc(f.title)+' — '+esc(f.filename||'')):esc(f.filename||'(未命名)');
       return '<div class="pd-file" data-fid="'+esc(String(f.id))+'">'
-        +'<div class="pd-file-row" onclick="toggleFileSummary(this,'+JSON.stringify(pid)+','+f.id+')">'
+        +"<div class=\"pd-file-row\" onclick=\"toggleFileSummary(this,'"+esc(String(pid))+"',"+f.id+")\">"
           +'<div class="pd-file-icon">'+fileIconFor(f.mime)+'</div>'
           +'<div class="pd-file-info">'
             +'<div class="pd-file-name">'+label+'</div>'
