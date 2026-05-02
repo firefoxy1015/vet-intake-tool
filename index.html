@@ -94,6 +94,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pd-med-instr{color:#444;font-size:11.5px;line-height:1.5;margin-top:2px}
 .pd-med-meta{font-size:10.5px;color:#888;margin-top:3px}
 .pd-empty{font-size:12px;color:#aaa;text-align:center;padding:8px 0;font-style:italic}
+.pd-files-list{display:flex;flex-direction:column;gap:6px}
+.pd-file{border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden}
+.pd-file-row{display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;user-select:none}
+.pd-file-row:hover{background:#F9FAFB}
+.pd-file-icon{font-size:20px;line-height:1}
+.pd-file-info{flex:1;min-width:0}
+.pd-file-name{font-size:12.5px;font-weight:600;color:#111;line-height:1.35;word-break:break-all}
+.pd-file-meta{font-size:10.5px;color:#888;margin-top:2px}
+.pd-file-toggle{color:#999;font-size:14px;flex-shrink:0}
+.pd-file-body{border-top:1px solid #f0f0f0;padding:10px;background:#FAFAFA;font-size:12px;line-height:1.6;color:#222;white-space:pre-wrap}
+.pd-file-summary{white-space:normal}
+.pd-file-loading{font-size:12px;color:#666;display:flex;align-items:center;gap:8px;padding:4px 0}
 .pd-spell-btn{background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto}
 .pd-spell-btn:disabled{background:#aaa;cursor:not-allowed}
 .pd-spell-btn:active{opacity:.8}
@@ -422,6 +434,8 @@ buildGrid();
 // ── Schedule ──
 var NEO_API='https://ai-studio-swo7.onrender.com/api/neo-schedule';
 var NEO_HISTORY_API='https://ai-studio-swo7.onrender.com/api/neo-history';
+var NEO_FILES_API='https://ai-studio-swo7.onrender.com/api/neo-patient-files';
+var NEO_FILE_SUMMARY_API='https://ai-studio-swo7.onrender.com/api/neo-file-summary';
 var currentPatient=null;        // {patient,species,breed,sex,age,weight,notes,pid}
 var currentHistory=null;        // [{header,title,vitals,body}, ...] — last consults
 var currentMeds=null;           // [{name,instructions,...}, ...] — active prescriptions
@@ -657,6 +671,7 @@ function openPatientDetail(a){
     +'<div class="pd-section"><div class="pd-h">🔧 拼写修复 <button class="pd-spell-btn" id="pdSpellBtn" onclick="spellCheck()">检查最新S部分</button></div><div id="pdSpell" class="pd-empty">点按钮，AI 会找出最近一次就诊 S（Subjective）部分的拼写错误</div></div>'
     +'<div class="pd-section"><div class="pd-h">✏️ 语句润色建议 <button class="pd-spell-btn" id="pdRewriteBtn" style="background:#6366F1" onclick="rewriteSuggest()">生成建议</button></div><div id="pdRewrite" class="pd-empty">点按钮，AI 会逐句给最新 S 部分的润色建议（每条单独 Approve）</div></div>'
     +'<div class="pd-section"><div class="pd-h">📋 给医生的 Briefing <button class="pd-spell-btn" id="pdBriefBtn" style="background:#0EA5E9" onclick="genBriefing()">生成 Briefing</button></div><div id="pdBrief" class="pd-empty">点按钮，AI 会综合最新 S + 病史 + 用药生成一段连贯的医生 briefing</div></div>'
+    +'<div class="pd-section"><div class="pd-h">📎 调档文件 (Files) <span class="pd-spin" id="pdFilesSpin"></span></div><div id="pdFiles"><div class="pd-empty">载入中...</div></div></div>'
     +'<div class="pd-section"><div class="pd-h">📚 过往就诊 <span class="pd-spin" id="pdHistSpin"></span></div><div id="pdHist"><div class="pd-empty">载入中...</div></div></div>'
     +'</div>';
   pd.classList.add('on');
@@ -677,10 +692,80 @@ function openPatientDetail(a){
         runAI(a,[],[]);
         runHistorySummary(a,[]);
       });
+    loadPatientFiles(a.patient_id);
   }else{
     renderMeds([]);
     runAI(a,[],[]);
     runHistorySummary(a,[]);
+    var fbox=document.getElementById('pdFiles');var fsp=document.getElementById('pdFilesSpin');
+    if(fbox)fbox.innerHTML='<div class="pd-empty">无 patient_id，无法拉文件</div>';
+    if(fsp)fsp.remove();
+  }
+}
+function fmtSize(n){
+  if(!n||n<0)return '';
+  if(n<1024)return n+'B';
+  if(n<1048576)return (n/1024).toFixed(1)+'KB';
+  return (n/1048576).toFixed(1)+'MB';
+}
+function fileIconFor(mime){
+  var m=(mime||'').toLowerCase();
+  if(m.indexOf('pdf')>=0)return '📄';
+  if(m.indexOf('image/')===0)return '🖼️';
+  if(m.indexOf('text')>=0)return '📝';
+  return '📎';
+}
+async function loadPatientFiles(pid){
+  var box=document.getElementById('pdFiles');
+  var sp=document.getElementById('pdFilesSpin');
+  if(!box)return;
+  try{
+    var r=await fetch(NEO_FILES_API+'?pid='+encodeURIComponent(pid));
+    var d=await r.json();
+    if(sp)sp.remove();
+    var files=(d&&d.files)||[];
+    if(!files.length){box.innerHTML='<div class="pd-empty">此病人没有调档文件</div>';return;}
+    var html=files.map(function(f){
+      var meta=[f.created||'',fmtSize(f.size),(f.mime||'').split(';')[0]].filter(Boolean).join(' · ');
+      var label=f.title?(esc(f.title)+' — '+esc(f.filename||'')):esc(f.filename||'(未命名)');
+      return '<div class="pd-file" data-fid="'+esc(String(f.id))+'">'
+        +'<div class="pd-file-row" onclick="toggleFileSummary(this,'+JSON.stringify(pid)+','+f.id+')">'
+          +'<div class="pd-file-icon">'+fileIconFor(f.mime)+'</div>'
+          +'<div class="pd-file-info">'
+            +'<div class="pd-file-name">'+label+'</div>'
+            +(meta?'<div class="pd-file-meta">'+esc(meta)+'</div>':'')
+          +'</div>'
+          +'<div class="pd-file-toggle">▾</div>'
+        +'</div>'
+        +'<div class="pd-file-body" style="display:none"></div>'
+      +'</div>';
+    }).join('');
+    box.innerHTML='<div class="pd-files-list">'+html+'</div>';
+  }catch(e){
+    if(sp)sp.remove();
+    box.innerHTML='<div class="pd-empty">⚠ 拉文件失败：'+esc(e.message||'')+'</div>';
+  }
+}
+async function toggleFileSummary(rowEl,pid,fid){
+  var wrap=rowEl.parentElement;
+  var body=wrap.querySelector('.pd-file-body');
+  var tgl=rowEl.querySelector('.pd-file-toggle');
+  if(body.style.display==='block'){body.style.display='none';if(tgl)tgl.textContent='▾';return;}
+  body.style.display='block';if(tgl)tgl.textContent='▴';
+  if(body.dataset.loaded==='1')return;
+  body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 正在下载并 AI 总结，可能需要 10-30 秒...</div>';
+  try{
+    var r=await fetch(NEO_FILE_SUMMARY_API+'?pid='+encodeURIComponent(pid)+'&file_id='+encodeURIComponent(fid));
+    var d=await r.json();
+    if(!r.ok){throw new Error(d&&d.detail||('HTTP '+r.status));}
+    var txt=d.summary||'（无内容）';
+    var html=esc(txt).replace(/\n/g,'<br>');
+    var meta=[d.kind,fmtSize(d.size),(d.raw_chars?d.raw_chars+' 字':null),(d.cached?'缓存':null)].filter(Boolean).join(' · ');
+    body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
+      +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
+    body.dataset.loaded='1';
+  }catch(e){
+    body.innerHTML='<div class="pd-empty">⚠ 总结失败：'+esc(e.message||'')+'</div>';
   }
 }
 async function runHistorySummary(a,consults){
