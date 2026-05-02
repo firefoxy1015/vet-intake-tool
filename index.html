@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs" type="module"></script>
+<script type="module">
+  // Lazy-load PDF.js into a window-global once
+  import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;padding:12px}
@@ -436,6 +443,8 @@ var NEO_API='https://ai-studio-swo7.onrender.com/api/neo-schedule';
 var NEO_HISTORY_API='https://ai-studio-swo7.onrender.com/api/neo-history';
 var NEO_FILES_API='https://ai-studio-swo7.onrender.com/api/neo-patient-files';
 var NEO_FILE_SUMMARY_API='https://ai-studio-swo7.onrender.com/api/neo-file-summary';
+var NEO_FILE_BYTES_API='https://ai-studio-swo7.onrender.com/api/neo-file-bytes';
+var NEO_VISION_SUMMARY_API='https://ai-studio-swo7.onrender.com/api/neo-vision-summary';
 var currentPatient=null;        // {patient,species,breed,sex,age,weight,notes,pid}
 var currentHistory=null;        // [{header,title,vitals,body}, ...] — last consults
 var currentMeds=null;           // [{name,instructions,...}, ...] — active prescriptions
@@ -753,19 +762,61 @@ async function toggleFileSummary(rowEl,pid,fid){
   if(body.style.display==='block'){body.style.display='none';if(tgl)tgl.textContent='▾';return;}
   body.style.display='block';if(tgl)tgl.textContent='▴';
   if(body.dataset.loaded==='1')return;
-  body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 正在下载并 AI 总结，可能需要 10-30 秒...</div>';
+  body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 正在下载并 AI 总结...</div>';
   try{
     var r=await fetch(NEO_FILE_SUMMARY_API+'?pid='+encodeURIComponent(pid)+'&file_id='+encodeURIComponent(fid));
     var d=await r.json();
     if(!r.ok){throw new Error(d&&d.detail||('HTTP '+r.status));}
-    var txt=d.summary||'（无内容）';
-    var html=esc(txt).replace(/\n/g,'<br>');
+    var txt=d.summary||'';
+    // If server couldn't extract text (scanned PDF), do browser-side OCR
+    var failed=(!d.raw_chars||d.raw_chars<10)&&/无法.*提取|没识别|未做 OCR|OCR/i.test(txt);
+    if(failed&&(d.mime||'').toLowerCase().indexOf('pdf')>=0){
+      await ocrPdfInBrowser(body,pid,fid,d.filename||'');
+      return;
+    }
+    var html=esc(txt||'（无内容）').replace(/\n/g,'<br>');
     var meta=[d.kind,fmtSize(d.size),(d.raw_chars?d.raw_chars+' 字':null),(d.cached?'缓存':null)].filter(Boolean).join(' · ');
     body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
       +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
     body.dataset.loaded='1';
   }catch(e){
     body.innerHTML='<div class="pd-empty">⚠ 总结失败：'+esc(e.message||'')+'</div>';
+  }
+}
+async function ocrPdfInBrowser(body,pid,fid,filename){
+  if(!window.pdfjsLib){body.innerHTML='<div class="pd-empty">⚠ PDF.js 未加载，请刷新页面</div>';return;}
+  body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 这是扫描件 PDF — 正在浏览器渲染并 OCR...</div>';
+  try{
+    var rb=await fetch(NEO_FILE_BYTES_API+'?pid='+encodeURIComponent(pid)+'&file_id='+encodeURIComponent(fid));
+    if(!rb.ok)throw new Error('PDF 下载失败 '+rb.status);
+    var ab=await rb.arrayBuffer();
+    var doc=await window.pdfjsLib.getDocument({data:ab}).promise;
+    var maxPages=Math.min(doc.numPages,8);
+    var images=[];
+    for(var i=1;i<=maxPages;i++){
+      body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 渲染第 '+i+'/'+maxPages+' 页...</div>';
+      var page=await doc.getPage(i);
+      var vp=page.getViewport({scale:1.6});
+      var canvas=document.createElement('canvas');
+      canvas.width=vp.width;canvas.height=vp.height;
+      await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+      var dataUrl=canvas.toDataURL('image/jpeg',0.85);
+      images.push(dataUrl.split(',')[1]);
+    }
+    body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> '+maxPages+' 页已渲染，正在 OCR + AI 总结...</div>';
+    var sr=await fetch(NEO_VISION_SUMMARY_API,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({images_b64:images,filename:filename,mime_hint:'image/jpeg'})
+    });
+    var sd=await sr.json();
+    if(!sr.ok)throw new Error(sd&&sd.detail||('HTTP '+sr.status));
+    var html=esc(sd.summary||'（AI 未返回内容）').replace(/\n/g,'<br>');
+    var meta=['pdf-ocr', sd.pages+' 页', (sd.raw_chars?sd.raw_chars+' 字':null)].filter(Boolean).join(' · ');
+    body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
+      +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
+    body.dataset.loaded='1';
+  }catch(e){
+    body.innerHTML='<div class="pd-empty">⚠ 浏览器 OCR 失败：'+esc(e.message||'')+'</div>';
   }
 }
 async function runHistorySummary(a,consults){
