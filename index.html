@@ -755,6 +755,32 @@ async function loadPatientFiles(pid){
     box.innerHTML='<div class="pd-empty">⚠ 拉文件失败：'+esc(e.message||'')+'</div>';
   }
 }
+// Per-file summary cache in localStorage — 7 days, keyed by file_id.
+// Survives page refresh and Render cold starts.
+var FILE_CACHE_KEY='vetFileSummary_v1';
+var FILE_CACHE_TTL=7*24*3600*1000; // 7 days
+function loadFileCache(){try{return JSON.parse(localStorage.getItem(FILE_CACHE_KEY)||'{}');}catch(_){return {};}}
+function saveFileCache(c){try{localStorage.setItem(FILE_CACHE_KEY,JSON.stringify(c));}catch(_){}}
+function getFileCached(fid){
+  var c=loadFileCache();var e=c[String(fid)];
+  if(!e||(Date.now()-e.at)>FILE_CACHE_TTL)return null;
+  return e.payload;
+}
+function setFileCached(fid,payload){
+  var c=loadFileCache();
+  c[String(fid)]={at:Date.now(),payload:payload};
+  // Garbage-collect entries older than 7 days
+  var cutoff=Date.now()-FILE_CACHE_TTL;
+  Object.keys(c).forEach(function(k){if(c[k].at<cutoff)delete c[k];});
+  saveFileCache(c);
+}
+function renderSummary(body,d,fromCache){
+  var html=esc(d.summary||'（无内容）').replace(/\n/g,'<br>');
+  var meta=[d.kind,fmtSize(d.size),(d.raw_chars?d.raw_chars+' 字':null),(fromCache?'⚡ 缓存':(d.cached?'缓存':null))].filter(Boolean).join(' · ');
+  body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
+    +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
+  body.dataset.loaded='1';
+}
 async function toggleFileSummary(rowEl,pid,fid){
   var wrap=rowEl.parentElement;
   var body=wrap.querySelector('.pd-file-body');
@@ -762,6 +788,9 @@ async function toggleFileSummary(rowEl,pid,fid){
   if(body.style.display==='block'){body.style.display='none';if(tgl)tgl.textContent='▾';return;}
   body.style.display='block';if(tgl)tgl.textContent='▴';
   if(body.dataset.loaded==='1')return;
+  // ① Local 7-day cache hit → instant
+  var local=getFileCached(fid);
+  if(local){renderSummary(body,local,true);return;}
   body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> 正在下载并 AI 总结...</div>';
   try{
     var r=await fetch(NEO_FILE_SUMMARY_API+'?pid='+encodeURIComponent(pid)+'&file_id='+encodeURIComponent(fid));
@@ -774,11 +803,8 @@ async function toggleFileSummary(rowEl,pid,fid){
       await ocrPdfInBrowser(body,pid,fid,d.filename||'');
       return;
     }
-    var html=esc(txt||'（无内容）').replace(/\n/g,'<br>');
-    var meta=[d.kind,fmtSize(d.size),(d.raw_chars?d.raw_chars+' 字':null),(d.cached?'缓存':null)].filter(Boolean).join(' · ');
-    body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
-      +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
-    body.dataset.loaded='1';
+    renderSummary(body,d,false);
+    setFileCached(fid,d);
   }catch(e){
     body.innerHTML='<div class="pd-empty">⚠ 总结失败：'+esc(e.message||'')+'</div>';
   }
@@ -806,15 +832,14 @@ async function ocrPdfInBrowser(body,pid,fid,filename){
     body.innerHTML='<div class="pd-file-loading"><span class="pd-spin"></span> '+maxPages+' 页已渲染，正在 OCR + AI 总结...</div>';
     var sr=await fetch(NEO_VISION_SUMMARY_API,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({images_b64:images,filename:filename,mime_hint:'image/jpeg'})
+      body:JSON.stringify({images_b64:images,filename:filename,mime_hint:'image/jpeg',file_id:fid})
     });
     var sd=await sr.json();
     if(!sr.ok)throw new Error(sd&&sd.detail||('HTTP '+sr.status));
-    var html=esc(sd.summary||'（AI 未返回内容）').replace(/\n/g,'<br>');
-    var meta=['pdf-ocr', sd.pages+' 页', (sd.raw_chars?sd.raw_chars+' 字':null)].filter(Boolean).join(' · ');
-    body.innerHTML='<div class="pd-file-summary">'+html+'</div>'
-      +'<div class="pd-file-meta" style="margin-top:6px;opacity:.6">'+esc(meta)+'</div>';
-    body.dataset.loaded='1';
+    // Use the same renderer + cache as text-PDF path
+    var payload={summary:sd.summary,raw_chars:sd.raw_chars,kind:'pdf-ocr',pages:sd.pages,size:0,mime:'application/pdf',filename:sd.filename||filename};
+    renderSummary(body,payload,false);
+    setFileCached(fid,payload);
   }catch(e){
     body.innerHTML='<div class="pd-empty">⚠ 浏览器 OCR 失败：'+esc(e.message||'')+'</div>';
   }
